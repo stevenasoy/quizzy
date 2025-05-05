@@ -6,6 +6,10 @@ from docx import Document
 import pdfplumber
 import os
 import sys
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 app = Flask(__name__)
 CORS(app)
@@ -16,27 +20,31 @@ try:
     from PIL import Image
     TESSERACT_AVAILABLE = True
     
-    # Try different possible Tesseract paths
-    possible_paths = [
-        r'C:\Program Files\Tesseract-OCR\tesseract.exe',
-        r'C:\Program Files (x86)\Tesseract-OCR\tesseract.exe',
-        r'C:\Tesseract-OCR\tesseract.exe',
-        # Add the path to your Tesseract installation here
-        r'C:\Users\StevenJakeASOY\AppData\Local\Programs\Tesseract-OCR\tesseract.exe'
-    ]
-    
-    tesseract_found = False
-    for path in possible_paths:
-        if os.path.exists(path):
-            pytesseract.pytesseract.tesseract_cmd = path
-            tesseract_found = True
-            print(f"Found Tesseract at: {path}")
-            break
-    
-    if not tesseract_found:
-        print("Tesseract not found in common locations. Please add it to PATH or specify the correct path.")
-        print("Current PATH:", os.environ.get('PATH', ''))
-        TESSERACT_AVAILABLE = False
+    # Get Tesseract path from environment variable
+    tesseract_path = os.getenv('TESSERACT_PATH')
+    if tesseract_path and os.path.exists(tesseract_path):
+        pytesseract.pytesseract.tesseract_cmd = tesseract_path
+        print(f"Using Tesseract from: {tesseract_path}")
+    else:
+        # Fallback to common paths if environment variable is not set
+        possible_paths = [
+            r'C:\Program Files\Tesseract-OCR\tesseract.exe',
+            r'C:\Program Files (x86)\Tesseract-OCR\tesseract.exe',
+            r'C:\Tesseract-OCR\tesseract.exe',
+            r'C:\Users\StevenJakeASOY\AppData\Local\Programs\Tesseract-OCR\tesseract.exe'
+        ]
+        
+        tesseract_found = False
+        for path in possible_paths:
+            if os.path.exists(path):
+                pytesseract.pytesseract.tesseract_cmd = path
+                tesseract_found = True
+                print(f"Found Tesseract at: {path}")
+                break
+        
+        if not tesseract_found:
+            print("Tesseract not found in common locations. Please set TESSERACT_PATH in .env file.")
+            TESSERACT_AVAILABLE = False
         
 except ImportError:
     TESSERACT_AVAILABLE = False
