@@ -22,7 +22,7 @@
           >
           <div class="upload-prompt">
             <p>Drag and drop files here or click to select</p>
-            <p>Supported formats: PDF, DOCX, PPTX, TXT, PNG, JPG, JPEG, TIFF, BMP</p>
+            <p>Supported formats: PDF, DOCX, PPTX, TXT</p>
           </div>
         </div>
         
