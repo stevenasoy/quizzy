@@ -11,7 +11,18 @@ from dotenv import load_dotenv
 load_dotenv()
 
 app = Flask(__name__)
-CORS(app)
+# Configure CORS
+CORS(app, resources={
+    r"/*": {
+        "origins": [
+            "http://localhost:8080",  # Local development
+            "https://quizzy-frontend.vercel.app",  # Production frontend
+            "https://*.vercel.app"  # Any Vercel subdomain
+        ],
+        "methods": ["GET", "POST", "OPTIONS"],
+        "allow_headers": ["Content-Type"]
+    }
+})
 
 @app.route('/extract-file', methods=['POST'])
 def extract_file():

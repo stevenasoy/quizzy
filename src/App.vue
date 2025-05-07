@@ -139,7 +139,7 @@ const readFileContent = (file) => {
       // PDF, PPTX, DOCX, or Image - send to backend for extraction
       const formData = new FormData();
       formData.append('file', file);
-      fetch('http://127.0.0.1:5001/extract-file', {
+      fetch(process.env.VUE_APP_API_URL || 'http://127.0.0.1:5001/extract-file', {
         method: 'POST',
         body: formData
       })
