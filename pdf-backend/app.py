@@ -16,7 +16,7 @@ CORS(app, resources={
     r"/*": {
         "origins": [
             "http://localhost:8080",  # Local development
-            "https://quizzy-frontend.vercel.app",  # Production frontend
+            "https://quizzy-mocha-chi.vercel.app",  # Your frontend URL
             "https://*.vercel.app"  # Any Vercel subdomain
         ],
         "methods": ["GET", "POST", "OPTIONS"],
