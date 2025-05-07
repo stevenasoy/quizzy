@@ -20,7 +20,8 @@ CORS(app, resources={
             "https://*.vercel.app"  # Any Vercel subdomain
         ],
         "methods": ["GET", "POST", "OPTIONS"],
-        "allow_headers": ["Content-Type"]
+        "allow_headers": ["Content-Type", "Authorization"],
+        "supports_credentials": True
     }
 })
 
