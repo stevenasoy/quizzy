@@ -139,7 +139,10 @@ const readFileContent = (file) => {
       // PDF, PPTX, DOCX, or Image - send to backend for extraction
       const formData = new FormData();
       formData.append('file', file);
-      fetch(`${process.env.VUE_APP_API_URL}/extract-file`, {
+      
+      // Use the correct backend URL
+      const backendUrl = process.env.VUE_APP_BACKEND_URL || 'http://localhost:5001';
+      fetch(`${backendUrl}/extract-file`, {
         method: 'POST',
         body: formData
       })
