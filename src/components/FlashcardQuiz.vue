@@ -31,11 +31,10 @@
           </button>
         </div>
 
-        <div v-if="showAnswer" class="explanation">
-          <p class="feedback" :class="{ 'correct': isCorrect, 'incorrect': !isCorrect }">
+        <div v-if="showAnswer" class="feedback">
+          <p :class="{ 'correct': isCorrect, 'incorrect': !isCorrect }">
             {{ isCorrect ? 'Correct!' : 'Incorrect!' }}
           </p>
-          <p>{{ currentQuestion.explanation }}</p>
         </div>
 
         <button 
@@ -54,6 +53,25 @@
         <p>Your Score: {{ score }} out of {{ questions.length }}</p>
         <p>Percentage: {{ Math.round((score / questions.length) * 100) }}%</p>
       </div>
+      
+      <div class="detailed-results">
+        <h3>Question Review</h3>
+        <div v-for="(answer, index) in userAnswers" :key="index" class="result-item">
+          <div class="question-header">
+            <span class="question-number">Question {{ index + 1 }}</span>
+            <span :class="['result-status', answer.isCorrect ? 'correct' : 'incorrect']">
+              {{ answer.isCorrect ? '✓' : '✗' }}
+            </span>
+          </div>
+          <p class="question-text">{{ answer.question }}</p>
+          <div class="answer-details">
+            <p>Your answer: {{ answer.userAnswer }}</p>
+            <p>Correct answer: {{ answer.correctAnswer }}</p>
+            <p class="explanation">{{ questions[index].explanation }}</p>
+          </div>
+        </div>
+      </div>
+
       <button class="restart-btn" @click="restartQuiz">Try Again</button>
       <button class="back-btn" @click="goBack">Back to Upload</button>
     </div>
@@ -215,24 +233,11 @@ const goBack = () => {
   opacity: 0.8;
 }
 
-.explanation {
+.feedback {
   margin-top: 20px;
   padding: 15px;
   background: #f8f8f8;
   border-radius: 6px;
-}
-
-.feedback {
-  font-weight: bold;
-  margin-bottom: 10px;
-}
-
-.feedback.correct {
-  color: #4CAF50;
-}
-
-.feedback.incorrect {
-  color: #f44336;
 }
 
 .next-btn {
@@ -301,5 +306,66 @@ const goBack = () => {
 
 .back-btn:hover {
   background: #e0e0e0;
+}
+
+.detailed-results {
+  margin: 2rem 0;
+  text-align: left;
+}
+
+.result-item {
+  background: #f8f8f8;
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+
+.question-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.question-number {
+  font-weight: bold;
+  color: #333;
+}
+
+.result-status {
+  font-weight: bold;
+  font-size: 1.2em;
+}
+
+.result-status.correct {
+  color: #4CAF50;
+}
+
+.result-status.incorrect {
+  color: #f44336;
+}
+
+.question-text {
+  margin-bottom: 0.5rem;
+  color: #333;
+}
+
+.answer-details {
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid #ddd;
+}
+
+.answer-details p {
+  margin: 0.3rem 0;
+  color: #666;
+}
+
+.explanation {
+  margin-top: 0.5rem;
+  padding: 0.5rem;
+  background: #fff;
+  border-radius: 4px;
+  border-left: 3px solid #4CAF50;
 }
 </style> 
