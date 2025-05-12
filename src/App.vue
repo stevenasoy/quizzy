@@ -26,22 +26,17 @@
           </div>
         </div>
         
+        <FileErrorDisplay
+          :extraction-errors="extractionErrors"
+          :unsupported-files="unsupportedFiles"
+        />
+
         <div v-if="selectedFiles.length > 0" class="selected-files">
           <h3>Selected Files:</h3>
           <ul>
             <li v-for="(file, index) in selectedFiles" :key="index" class="file-item">
               <span class="file-name">{{ file.name }}</span>
               <button @click="removeFile(index)" class="remove-btn" title="Remove file">×</button>
-            </li>
-          </ul>
-        </div>
-
-        <div v-if="unsupportedFiles.length > 0" class="unsupported-files">
-          <h3>Unsupported Files:</h3>
-          <ul>
-            <li v-for="(file, index) in unsupportedFiles" :key="index" class="file-item">
-              <span class="file-name">{{ file.name }}</span>
-              <span class="unsupported-label">(Unsupported format)</span>
             </li>
           </ul>
         </div>
@@ -68,10 +63,17 @@
         </button>
       </div>
 
-      <div v-else>
+      <div v-else-if="!hasFileErrors && flashcardQuestions.length > 0">
         <FlashcardQuiz
           :questions="flashcardQuestions"
           @go-back="resetToMainScreen"
+        />
+      </div>
+
+      <div v-else-if="hasFileErrors">
+        <FileErrorDisplay
+          :extraction-errors="extractionErrors"
+          :unsupported-files="unsupportedFiles"
         />
       </div>
 
@@ -128,6 +130,7 @@ import { ref, computed } from 'vue';
 import axios from 'axios';
 import FlashcardQuiz from './components/FlashcardQuiz.vue';
 import TrueFalseQuestion from './components/TrueFalseQuestion.vue';
+import FileErrorDisplay from './components/FileErrorDisplay.vue';
 
 const selectedFiles = ref([]);
 const questionCount = ref('');
@@ -141,9 +144,14 @@ const quiz = ref(null);
 const userAnswers = ref([]);
 const showAnswers = ref(false);
 const unsupportedFiles = ref([]);
+const extractionErrors = ref([]);
 
 const isFormValid = computed(() => {
   return selectedFiles.value.length > 0 && questionCount.value > 0;
+});
+
+const hasFileErrors = computed(() => {
+  return extractionErrors.value.length > 0 || unsupportedFiles.value.length > 0;
 });
 
 const triggerFileInput = () => {
@@ -194,8 +202,8 @@ const removeFile = (index) => {
   selectedFiles.value.splice(index, 1);
 };
 
-const readFileContent = (file) => {
-  return new Promise((resolve, reject) => {
+const readFileContent = async (file) => {
+  return new Promise((resolve) => {
     if (
       file.type === "application/pdf" ||
       file.type === "application/vnd.openxmlformats-officedocument.presentationml.presentation" ||
@@ -214,15 +222,34 @@ const readFileContent = (file) => {
       })
         .then(res => res.json())
         .then(data => {
-          if (data.text) resolve(data.text);
-          else resolve("[Could not extract file text]");
+          if (data.text) {
+            resolve(data.text);
+          } else {
+            extractionErrors.value.push({
+              fileName: file.name,
+              message: data.error || 'Failed to extract text from file'
+            });
+            resolve("[Could not extract file text]");
+          }
         })
-        .catch(() => resolve("[Could not extract file text]"));
+        .catch(() => {
+          extractionErrors.value.push({
+            fileName: file.name,
+            message: 'Server error while extracting text'
+          });
+          resolve("[Could not extract file text]");
+        });
     } else if (file.type === "text/plain") {
       // Plain text
       const reader = new FileReader();
       reader.onload = (e) => resolve(e.target.result);
-      reader.onerror = (e) => reject(e);
+      reader.onerror = () => {
+        extractionErrors.value.push({
+          fileName: file.name,
+          message: 'Error reading text file'
+        });
+        resolve("[Could not read file]");
+      };
       reader.readAsText(file);
     } else {
       resolve(`[${file.name} is not a supported file type.]`);
@@ -344,6 +371,7 @@ const resetToMainScreen = () => {
   generatedQuestions.value = [];
   selectedFiles.value = [];
   unsupportedFiles.value = [];
+  extractionErrors.value = [];
   questionCount.value = '';
   error.value = '';
   isLoading.value = false;

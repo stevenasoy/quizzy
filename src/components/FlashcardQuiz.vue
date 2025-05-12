@@ -49,9 +49,9 @@
 
     <div v-else class="quiz-results">
       <h2>Quiz Results</h2>
-      <div class="score">
-        <p>Your Score: {{ score }} out of {{ questions.length }}</p>
-        <p>Percentage: {{ Math.round((score / questions.length) * 100) }}%</p>
+      <div class="score" :class="scoreClass">
+        <p class="score-value">{{ score }} / {{ questions.length }}</p>
+        <p class="score-percentage">{{ Math.round((score / questions.length) * 100) }}%</p>
       </div>
       
       <div class="detailed-results">
@@ -140,6 +140,13 @@ const restartQuiz = () => {
 const goBack = () => {
   emit('go-back');
 };
+
+const scorePercentage = computed(() => {
+  return Math.round((score.value / props.questions.length) * 100);
+});
+const scoreClass = computed(() => {
+  return scorePercentage.value >= 75 ? 'score-green' : 'score-red';
+});
 </script>
 
 <style scoped>
@@ -271,13 +278,29 @@ const goBack = () => {
 }
 
 .score {
-  font-size: 1.2em;
+  font-size: 2.5em;
   margin-bottom: 30px;
+  font-weight: bold;
+  text-align: center;
 }
 
-.score p {
-  margin: 10px 0;
-  color: #666;
+.score-value {
+  font-size: 3.5em;
+  font-weight: 900;
+  margin-bottom: 0.2em;
+}
+
+.score-percentage {
+  font-size: 1.5em;
+  font-weight: 600;
+}
+
+.score-green {
+  color: #2e7d32;
+}
+
+.score-red {
+  color: #c62828;
 }
 
 .restart-btn, .back-btn {
