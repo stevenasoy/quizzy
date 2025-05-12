@@ -29,9 +29,19 @@
         <div v-if="selectedFiles.length > 0" class="selected-files">
           <h3>Selected Files:</h3>
           <ul>
-            <li v-for="(file, index) in selectedFiles" :key="index">
-              {{ file.name }}
-              <button @click="removeFile(index)" class="remove-btn">×</button>
+            <li v-for="(file, index) in selectedFiles" :key="index" class="file-item">
+              <span class="file-name">{{ file.name }}</span>
+              <button @click="removeFile(index)" class="remove-btn" title="Remove file">×</button>
+            </li>
+          </ul>
+        </div>
+
+        <div v-if="unsupportedFiles.length > 0" class="unsupported-files">
+          <h3>Unsupported Files:</h3>
+          <ul>
+            <li v-for="(file, index) in unsupportedFiles" :key="index" class="file-item">
+              <span class="file-name">{{ file.name }}</span>
+              <span class="unsupported-label">(Unsupported format)</span>
             </li>
           </ul>
         </div>
@@ -130,6 +140,7 @@ const flashcardQuestions = ref([]);
 const quiz = ref(null);
 const userAnswers = ref([]);
 const showAnswers = ref(false);
+const unsupportedFiles = ref([]);
 
 const isFormValid = computed(() => {
   return selectedFiles.value.length > 0 && questionCount.value > 0;
@@ -150,24 +161,33 @@ const handleDrop = (event) => {
 };
 
 const addFiles = (files) => {
-  const validFiles = files.filter(file => {
-    const validTypes = [
-      'application/msword',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      'application/vnd.ms-powerpoint',
-      'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-      'text/plain',
-      'application/pdf',
-      'image/png',
-      'image/jpeg',
-      'image/jpg',
-      'image/tiff',
-      'image/bmp'
-    ];
-    return validTypes.includes(file.type);
+  const validTypes = [
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.ms-powerpoint',
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    'text/plain',
+    'application/pdf',
+    'image/png',
+    'image/jpeg',
+    'image/jpg',
+    'image/tiff',
+    'image/bmp'
+  ];
+  
+  const validFiles = [];
+  const invalidFiles = [];
+  
+  files.forEach(file => {
+    if (validTypes.includes(file.type)) {
+      validFiles.push(file);
+    } else {
+      invalidFiles.push(file);
+    }
   });
   
   selectedFiles.value = [...selectedFiles.value, ...validFiles];
+  unsupportedFiles.value = [...unsupportedFiles.value, ...invalidFiles];
 };
 
 const removeFile = (index) => {
@@ -323,6 +343,7 @@ const resetToMainScreen = () => {
   flashcardQuestions.value = [];
   generatedQuestions.value = [];
   selectedFiles.value = [];
+  unsupportedFiles.value = [];
   questionCount.value = '';
   error.value = '';
   isLoading.value = false;
@@ -621,5 +642,66 @@ button:disabled {
 
 button:not(:disabled):hover {
   background-color: #45a049;
+}
+
+.file-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem;
+  background-color: #f8f8f8;
+  margin-bottom: 0.5rem;
+  border-radius: 4px;
+}
+
+.file-name {
+  flex: 1;
+  margin-right: 0.5rem;
+  word-break: break-word;
+}
+
+.remove-btn {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  background: none;
+  border: none;
+  color: #ff4444;
+  cursor: pointer;
+  font-size: 1.2rem;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: background-color 0.2s;
+}
+
+.remove-btn:hover {
+  background-color: #ffeeee;
+}
+
+.unsupported-files {
+  margin-top: 1rem;
+  padding: 1rem;
+  background-color: #fff3f3;
+  border-radius: 4px;
+  border: 1px solid #ffdddd;
+}
+
+.unsupported-files h3 {
+  color: #d32f2f;
+  margin-bottom: 0.5rem;
+}
+
+.unsupported-label {
+  color: #d32f2f;
+  font-size: 0.9em;
+  margin-left: 0.5rem;
+}
+
+.unsupported-files .file-item {
+  background-color: #fff;
+  border: 1px solid #ffdddd;
 }
 </style> 
