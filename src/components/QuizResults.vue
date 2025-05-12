@@ -1,4 +1,4 @@
-<template>
+ <template>
   <div class="quiz-results">
     <h2>Quiz Complete!</h2>
     <div class="score-display" :class="scoreClass">

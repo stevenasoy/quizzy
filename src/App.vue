@@ -58,16 +58,58 @@
         </button>
       </div>
 
-      <FlashcardQuiz
-        v-else
-        :questions="flashcardQuestions"
-        @go-back="resetToMainScreen"
-      />
+      <div v-else>
+        <FlashcardQuiz
+          :questions="flashcardQuestions"
+          @go-back="resetToMainScreen"
+        />
+      </div>
 
       <div v-if="error" class="error-message">
         {{ error }}
       </div>
     </div>
+
+    <template v-if="quiz">
+      <div class="quiz-container">
+        <h2>Generated Quiz</h2>
+        <template v-for="(question, index) in quiz.questions" :key="index">
+          <div class="question">
+            <h3>Question {{ index + 1 }}: {{ question.text }}</h3>
+            <div class="options">
+              <template v-if="question.type === 'multiple-choice'">
+                <div v-for="(option, letter) in question.options" :key="letter" class="option">
+                  <input
+                    type="radio"
+                    :id="`q${index}-${letter}`"
+                    :name="`question${index}`"
+                    :value="letter"
+                    v-model="userAnswers[index]"
+                  />
+                  <label :for="`q${index}-${letter}`">{{ letter }}) {{ option }}</label>
+                </div>
+              </template>
+              <template v-else-if="question.type === 'true-false'">
+                <TrueFalseQuestion
+                  :index="index"
+                  :correct-answer="question.correctAnswer"
+                  :explanation="question.explanation"
+                  :show-feedback="showAnswers && userAnswers[index]"
+                  @update:answer="userAnswers[index] = $event"
+                />
+              </template>
+            </div>
+            <div v-if="showAnswers && userAnswers[index]" class="feedback">
+              <p :class="{ 'correct': userAnswers[index] === question.correctAnswer, 'incorrect': userAnswers[index] !== question.correctAnswer }">
+                {{ userAnswers[index] === question.correctAnswer ? 'Correct!' : 'Incorrect!' }}
+              </p>
+              <p class="explanation">{{ question.explanation }}</p>
+            </div>
+          </div>
+        </template>
+        <button @click="checkAnswers" :disabled="!allQuestionsAnswered">Check Answers</button>
+      </div>
+    </template>
   </div>
 </template>
 
@@ -75,6 +117,7 @@
 import { ref, computed } from 'vue';
 import axios from 'axios';
 import FlashcardQuiz from './components/FlashcardQuiz.vue';
+import TrueFalseQuestion from './components/TrueFalseQuestion.vue';
 
 const selectedFiles = ref([]);
 const questionCount = ref('');
@@ -84,6 +127,9 @@ const isLoading = ref(false);
 const error = ref('');
 const showQuestions = ref(false);
 const flashcardQuestions = ref([]);
+const quiz = ref(null);
+const userAnswers = ref([]);
+const showAnswers = ref(false);
 
 const isFormValid = computed(() => {
   return selectedFiles.value.length > 0 && questionCount.value > 0;
@@ -180,10 +226,30 @@ const handleSubmit = async () => {
 
     // Combine all file contents
     const combinedContent = fileContents.join('\n\n');
-    console.log('Extracted file content sent to Gemini:', combinedContent);
+    console.log('Extracted file content:', combinedContent);
 
     // Prepare the prompt for Gemini
-    const prompt = `You are a quiz generator. ONLY use the following content to create exactly ${questionCount.value} multiple-choice questions (with 4 options each and the correct answer indicated). \nDo NOT use any outside knowledge. \nFormat each question as:\nQuestion: <question text>\nA) <option 1>\nB) <option 2>\nC) <option 3>\nD) <option 4>\nAnswer: <correct option letter>\nCONTENT TO USE:\n${combinedContent}`;
+    const prompt = `Create a quiz with ${questionCount.value} questions based on this text. Format each question exactly as follows:
+
+For multiple choice questions:
+1. Start with "Question: [question text]"
+2. List options as:
+   A) [option text]
+   B) [option text]
+   C) [option text]
+   D) [option text]
+   (Mark correct answer with * after the option)
+3. Add "Explanation: [explanation text]"
+
+For true/false questions:
+1. Start with "True/False: [question text]"
+2. List options as:
+   True*
+   False
+   (or vice versa, with * marking correct answer)
+3. Add "Explanation: [explanation text]"
+
+Text: ${combinedContent}`;
 
     console.log('Sending request to Gemini API...');
     console.log('API Key:', process.env.VUE_APP_GEMINI_API_KEY ? 'Present' : 'Missing');
@@ -213,11 +279,37 @@ const handleSubmit = async () => {
 
     console.log('API Response:', response.data);
 
-    // Parse Gemini's response into flashcard questions
-    const generatedText = response.data.candidates[0].content.parts[0].text;
-    const parsedQuestions = parseFlashcardQuestions(generatedText);
-    flashcardQuestions.value = parsedQuestions;
+    // Process the response for both quiz and flashcards
+    const quizText = response.data.candidates[0].content.parts[0].text;
+    console.log('Quiz text from API:', quizText);
+    
+    const processedQuiz = processQuizResponse(quizText);
+    console.log('Processed quiz:', processedQuiz);
+    
+    // Convert quiz questions to flashcard format
+    flashcardQuestions.value = processedQuiz.questions.map(q => ({
+      text: q.text,
+      options: q.type === 'multiple-choice' 
+        ? Object.entries(q.options).map(([letter, text]) => ({ letter, text }))
+        : [
+            { letter: 'T', text: 'True' },
+            { letter: 'F', text: 'False' }
+          ],
+      answer: q.type === 'multiple-choice' ? q.correctAnswer : (q.correctAnswer === 'true' ? 'T' : 'F'),
+      explanation: q.explanation
+    }));
+
+    console.log('Flashcard questions:', flashcardQuestions.value);
+    console.log('Number of flashcard questions:', flashcardQuestions.value.length);
+
+    // Show the flashcard quiz
     showQuestions.value = true;
+    console.log('showQuestions set to:', showQuestions.value);
+    console.log('Current state:', {
+      showQuestions: showQuestions.value,
+      flashcardQuestionsLength: flashcardQuestions.value.length,
+      hasQuestions: flashcardQuestions.value.length > 0
+    });
   } catch (err) {
     console.error('Detailed Error:', err.response ? err.response.data : err);
     error.value = `Error generating questions: ${err.response ? err.response.data.error?.message || 'Unknown error' : err.message}`;
@@ -226,34 +318,93 @@ const handleSubmit = async () => {
   }
 };
 
-function parseFlashcardQuestions(text) {
-  // Split by 'Question:' and parse each block
-  const blocks = text.split(/\n?Question:/).map(b => b.trim()).filter(Boolean);
-  const questions = blocks.map(block => {
-    const lines = block.split('\n').map(l => l.trim());
-    const textLine = lines[0];
-    const options = ['A', 'B', 'C', 'D'].map(letter => {
-      const optLine = lines.find(l => l.startsWith(letter + ')'));
-      return { letter, text: optLine ? optLine.slice(3).trim() : '' };
-    });
-    const answerLine = lines.find(l => l.startsWith('Answer:'));
-    const answer = answerLine ? answerLine.replace('Answer:', '').trim() : '';
-    return {
-      text: textLine,
-      options,
-      answer
-    };
-  }).filter(q => q.text && q.options.every(o => o.text) && q.answer);
-  return questions;
-}
-
-function resetToMainScreen() {
+const resetToMainScreen = () => {
   showQuestions.value = false;
   flashcardQuestions.value = [];
   generatedQuestions.value = [];
   selectedFiles.value = [];
   questionCount.value = '';
-}
+  error.value = '';
+  isLoading.value = false;
+  if (fileInput.value) {
+    fileInput.value.value = '';
+  }
+};
+
+const checkAnswers = () => {
+  showAnswers.value = true;
+};
+
+const allQuestionsAnswered = computed(() => {
+  return userAnswers.value.length === quiz.value.questions.length;
+});
+
+const processQuizResponse = (response) => {
+  console.log('Processing quiz response:', response);
+  const questions = [];
+  const lines = response.split('\n');
+  let currentQuestion = null;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+
+    console.log('Processing line:', line);
+
+    if (line.startsWith('Question:')) {
+      if (currentQuestion) {
+        questions.push(currentQuestion);
+      }
+      currentQuestion = {
+        text: line.replace('Question:', '').trim(),
+        type: 'multiple-choice',
+        options: {},
+        correctAnswer: '',
+        explanation: ''
+      };
+      console.log('Created new multiple-choice question:', currentQuestion);
+    } else if (line.startsWith('True/False:')) {
+      if (currentQuestion) {
+        questions.push(currentQuestion);
+      }
+      currentQuestion = {
+        text: line.replace('True/False:', '').trim(),
+        type: 'true-false',
+        options: {
+          true: 'True',
+          false: 'False'
+        },
+        correctAnswer: '',
+        explanation: ''
+      };
+      console.log('Created new true/false question:', currentQuestion);
+    } else if (currentQuestion) {
+      if (line.match(/^[A-D]\)/)) {
+        const option = line.substring(2).trim();
+        const letter = line[0];
+        currentQuestion.options[letter] = option;
+        if (option.includes('*')) {
+          currentQuestion.correctAnswer = letter;
+          currentQuestion.options[letter] = option.replace('*', '').trim();
+        }
+        console.log('Added option to question:', { letter, option });
+      } else if (line === 'True*' || line === 'False*') {
+        currentQuestion.correctAnswer = line === 'True*' ? 'true' : 'false';
+        console.log('Set true/false answer:', currentQuestion.correctAnswer);
+      } else if (line.startsWith('Explanation:')) {
+        currentQuestion.explanation = line.replace('Explanation:', '').trim();
+        console.log('Added explanation:', currentQuestion.explanation);
+      }
+    }
+  }
+
+  if (currentQuestion) {
+    questions.push(currentQuestion);
+  }
+
+  console.log('Final processed questions:', questions);
+  return { questions };
+};
 </script>
 
 <style scoped>
@@ -404,5 +555,71 @@ h2 {
   color: #ff4444;
   margin-top: 1rem;
   text-align: center;
+}
+
+.quiz-container {
+  margin-top: 2rem;
+  padding: 2rem;
+  background-color: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.question {
+  margin-bottom: 1rem;
+  padding: 0.5rem;
+  background-color: #f8f8f8;
+  border-radius: 4px;
+}
+
+.options {
+  margin-top: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.option {
+  margin-bottom: 0.5rem;
+}
+
+.feedback {
+  margin-top: 0.5rem;
+  padding: 0.5rem;
+  background-color: #f8f8f8;
+  border-radius: 4px;
+}
+
+.correct {
+  color: #4CAF50;
+}
+
+.incorrect {
+  color: #ff4444;
+}
+
+.explanation {
+  margin-top: 0.5rem;
+  margin-left: 1rem;
+}
+
+button {
+  width: 100%;
+  padding: 1rem;
+  background-color: #4CAF50;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 1rem;
+  cursor: pointer;
+  margin-top: 2rem;
+  transition: background-color 0.3s;
+}
+
+button:disabled {
+  background-color: #cccccc;
+  cursor: not-allowed;
+}
+
+button:not(:disabled):hover {
+  background-color: #45a049;
 }
 </style> 
