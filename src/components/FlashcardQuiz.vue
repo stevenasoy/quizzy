@@ -1,79 +1,61 @@
 <template>
-  <div class="flashcard-quiz">
-    <div v-if="!showResults" class="quiz-content">
-      <div class="progress-bar">
-        <div class="progress" :style="{ width: `${(currentIndex + 1) / questions.length * 100}%` }"></div>
+  <div class="quiz-container">
+    <div v-if="getCurrentQuestion" class="quiz-content">
+      <div class="quiz-progress">
+        <div class="progress-bar">
+          <div 
+            class="progress-fill"
+            :style="{ width: `${(currentQuestionIndex + 1) * 100 / totalQuestions}%` }"
+          ></div>
+        </div>
+        <span class="progress-text">Question {{ currentQuestionIndex + 1 }} of {{ totalQuestions }}</span>
       </div>
       
-      <div class="question-counter">
-        Question {{ currentIndex + 1 }} of {{ questions.length }}
-      </div>
-
-      <div class="flashcard">
-        <div class="question">
-          {{ currentQuestion.text }}
-        </div>
-
-        <div class="options">
-          <button
-            v-for="option in currentQuestion.options"
-            :key="option.letter"
+      <div class="question-item">
+        <h3>{{ getCurrentQuestion.text }}</h3>
+        <div v-if="getCurrentQuestion.type === 'multiple-choice'" class="options">
+          <button 
+            v-for="(option, letter) in getCurrentQuestion.options" 
+            :key="letter"
             class="option-btn"
-            :class="{
-              'selected': selectedAnswer === option.letter,
-              'correct': showAnswer && option.letter === currentQuestion.answer,
-              'incorrect': showAnswer && selectedAnswer === option.letter && option.letter !== currentQuestion.answer
+            :class="{ 
+              'selected': currentAnswer === letter,
+              'correct': showFeedback && letter === getCurrentQuestion.correctAnswer,
+              'incorrect': showFeedback && currentAnswer === letter && letter !== getCurrentQuestion.correctAnswer
             }"
-            @click="selectAnswer(option.letter)"
-            :disabled="showAnswer"
+            @click="submitAnswer(letter)"
+            :disabled="showFeedback"
           >
-            {{ option.letter }}) {{ option.text }}
+            <span class="option-letter">{{ letter }}</span>
+            <span class="option-text">{{ option }}</span>
+          </button>
+        </div>
+        <div v-else-if="getCurrentQuestion.type === 'true-false'" class="options true-false">
+          <button 
+            v-for="(text, value) in { true: 'True', false: 'False' }" 
+            :key="value"
+            class="option-btn"
+            :class="{ 
+              'selected': currentAnswer === value,
+              'correct': showFeedback && value === getCurrentQuestion.correctAnswer,
+              'incorrect': showFeedback && currentAnswer === value && value !== getCurrentQuestion.correctAnswer
+            }"
+            @click="submitAnswer(value)"
+            :disabled="showFeedback"
+          >
+            {{ text }}
           </button>
         </div>
 
-        <div v-if="showAnswer" class="feedback">
-          <p :class="{ 'correct': isCorrect, 'incorrect': !isCorrect }">
-            {{ isCorrect ? 'Correct!' : 'Incorrect!' }}
+        <div v-if="showFeedback" class="feedback">
+          <p :class="{ 'correct-text': isAnswerCorrect, 'incorrect-text': !isAnswerCorrect }">
+            {{ isAnswerCorrect ? 'Correct!' : 'Incorrect!' }}
           </p>
-        </div>
-
-        <button 
-          v-if="showAnswer"
-          class="next-btn"
-          @click="nextQuestion"
-        >
-          {{ isLastQuestion ? 'Finish Quiz' : 'Next Question' }}
-        </button>
-      </div>
-    </div>
-
-    <div v-else class="quiz-results">
-      <h2>Quiz Results</h2>
-      <div class="score" :class="scoreClass">
-        <p class="score-value">{{ score }} / {{ questions.length }}</p>
-        <p class="score-percentage">{{ Math.round((score / questions.length) * 100) }}%</p>
-      </div>
-      
-      <div class="detailed-results">
-        <h3>Question Review</h3>
-        <div v-for="(answer, index) in userAnswers" :key="index" class="result-item">
-          <div class="question-header">
-            <span class="question-number">Question {{ index + 1 }}</span>
-            <span :class="['result-status', answer.isCorrect ? 'correct' : 'incorrect']">
-              {{ answer.isCorrect ? '✓' : '✗' }}
-            </span>
-          </div>
-          <p class="question-text">{{ answer.question }}</p>
-          <div class="answer-details">
-            <p>Your answer: {{ answer.userAnswer }}</p>
-            <p>Correct answer: {{ answer.correctAnswer }}</p>
-            <p class="explanation">{{ questions[index].explanation }}</p>
-          </div>
+          <button class="next-btn" @click="moveToNext">
+            {{ currentQuestionIndex + 1 >= totalQuestions ? 'See Results' : 'Next Question' }}
+          </button>
         </div>
       </div>
-
-      <button class="restart-btn" @click="restartQuiz">Try Again</button>
-      <button class="back-btn" @click="goBack">Back to Upload</button>
     </div>
   </div>
 </template>
@@ -85,310 +67,243 @@ const props = defineProps({
   questions: {
     type: Array,
     required: true
+  },
+  totalQuestions: {
+    type: Number,
+    required: true
   }
 });
 
-const emit = defineEmits(['go-back']);
+const emit = defineEmits(['quiz-completed']);
 
-const currentIndex = ref(0);
-const selectedAnswer = ref(null);
-const showAnswer = ref(false);
-const showResults = ref(false);
-const score = ref(0);
-const userAnswers = ref([]);
+const currentQuestionIndex = ref(0);
+const currentAnswer = ref(null);
+const showFeedback = ref(false);
+const isAnswerCorrect = ref(false);
+const userResponses = ref([]);
 
-const currentQuestion = computed(() => props.questions[currentIndex.value]);
+const getCurrentQuestion = computed(() => {
+  return props.questions[currentQuestionIndex.value];
+});
 
-const isLastQuestion = computed(() => currentIndex.value === props.questions.length - 1);
+const totalQuestions = computed(() => {
+  return props.totalQuestions;
+});
 
-const isCorrect = computed(() => selectedAnswer.value === currentQuestion.value.answer);
-
-const selectAnswer = (answer) => {
-  if (showAnswer.value) return;
-  selectedAnswer.value = answer;
-  showAnswer.value = true;
-  if (isCorrect.value) {
-    score.value++;
-  }
-  userAnswers.value[currentIndex.value] = {
-    question: currentQuestion.value.text,
-    userAnswer: answer,
-    correctAnswer: currentQuestion.value.answer,
-    isCorrect: isCorrect.value
-  };
-};
-
-const nextQuestion = () => {
-  if (isLastQuestion.value) {
-    showResults.value = true;
+const submitAnswer = (answer) => {
+  if (showFeedback.value) return;
+  
+  currentAnswer.value = answer;
+  const question = getCurrentQuestion.value;
+  
+  console.log('Submitting answer:', {
+    givenAnswer: answer,
+    correctAnswer: question.correctAnswer,
+    type: question.type
+  });
+  
+  if (question.type === 'true-false') {
+    isAnswerCorrect.value = String(answer).toLowerCase() === String(question.correctAnswer).toLowerCase();
   } else {
-    currentIndex.value++;
-    selectedAnswer.value = null;
-    showAnswer.value = false;
+    isAnswerCorrect.value = String(answer) === String(question.correctAnswer);
+  }
+  
+  console.log('Answer validation result:', isAnswerCorrect.value);
+  showFeedback.value = true;
+};
+
+const moveToNext = () => {
+  const question = getCurrentQuestion.value;
+  userResponses.value.push({
+    text: question.text,
+    userAnswer: currentAnswer.value,
+    correct: isAnswerCorrect.value,
+    difficulty: question.difficulty,
+    explanation: question.explanation
+  });
+
+  showFeedback.value = false;
+  isAnswerCorrect.value = false;
+  
+  if (currentQuestionIndex.value + 1 >= totalQuestions.value) {
+    emit('quiz-completed', userResponses.value);
+  } else {
+    currentQuestionIndex.value++;
+    currentAnswer.value = null;
   }
 };
-
-const restartQuiz = () => {
-  currentIndex.value = 0;
-  selectedAnswer.value = null;
-  showAnswer.value = false;
-  showResults.value = false;
-  score.value = 0;
-  userAnswers.value = [];
-};
-
-const goBack = () => {
-  emit('go-back');
-};
-
-const scorePercentage = computed(() => {
-  return Math.round((score.value / props.questions.length) * 100);
-});
-const scoreClass = computed(() => {
-  return scorePercentage.value >= 75 ? 'score-green' : 'score-red';
-});
 </script>
 
 <style scoped>
-.flashcard-quiz {
+.quiz-container {
   width: 100%;
-  max-width: 600px;
+  max-width: 800px;
   margin: 0 auto;
-  padding: 20px;
 }
 
 .quiz-content {
   background: white;
-  border-radius: 8px;
-  padding: 20px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  padding: 2rem;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.quiz-progress {
+  margin-bottom: 2rem;
 }
 
 .progress-bar {
   width: 100%;
   height: 8px;
-  background-color: #f0f0f0;
+  background-color: #e0e0e0;
   border-radius: 4px;
-  margin-bottom: 20px;
   overflow: hidden;
+  margin-bottom: 0.5rem;
 }
 
-.progress {
+.progress-fill {
   height: 100%;
   background-color: #4CAF50;
   transition: width 0.3s ease;
 }
 
-.question-counter {
+.progress-text {
+  display: block;
   text-align: center;
-  margin-bottom: 20px;
   color: #666;
+  font-size: 0.9rem;
 }
 
-.flashcard {
-  background: white;
-  border-radius: 8px;
-  padding: 20px;
+.question-item {
+  margin-top: 1.5rem;
 }
 
-.question {
-  font-size: 1.2em;
-  margin-bottom: 20px;
+.question-item h3 {
+  font-size: 1.2rem;
   color: #333;
+  margin-bottom: 1.5rem;
+  line-height: 1.4;
 }
 
 .options {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  margin-bottom: 20px;
+  gap: 0.8rem;
+  margin: 1.5rem 0;
+}
+
+.options.true-false {
+  flex-direction: row;
+  justify-content: center;
+  gap: 1.5rem;
 }
 
 .option-btn {
-  padding: 12px;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 1rem;
   border: 2px solid #e0e0e0;
-  border-radius: 6px;
-  background: white;
+  border-radius: 8px;
+  background-color: white;
+  color: #333;
   cursor: pointer;
-  transition: all 0.2s;
+  font-size: 1rem;
   text-align: left;
-  font-size: 1em;
+  transition: all 0.2s ease;
+}
+
+.options.true-false .option-btn {
+  width: auto;
+  min-width: 120px;
+  justify-content: center;
+  font-size: 1.1rem;
+  font-weight: 500;
+}
+
+.option-letter {
+  background-color: #f5f5f5;
+  color: #666;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  margin-right: 1rem;
+  font-weight: 600;
+}
+
+.option-text {
+  flex: 1;
 }
 
 .option-btn:hover:not(:disabled) {
-  border-color: #4CAF50;
-  background: #f8f8f8;
+  border-color: #2196F3;
+  background-color: #f8f9fa;
 }
 
 .option-btn.selected {
-  border-color: #4CAF50;
-  background: #f0f8f0;
+  border-color: #2196F3;
+  background-color: #e3f2fd;
 }
 
 .option-btn.correct {
   border-color: #4CAF50;
-  background: #e8f5e9;
+  background-color: #E8F5E9;
+  color: #2E7D32;
 }
 
 .option-btn.incorrect {
   border-color: #f44336;
-  background: #ffebee;
-}
-
-.option-btn:disabled {
-  cursor: default;
-  opacity: 0.8;
-}
-
-.feedback {
-  margin-top: 20px;
-  padding: 15px;
-  background: #f8f8f8;
-  border-radius: 6px;
-}
-
-.next-btn {
-  width: 100%;
-  padding: 12px;
-  background: #4CAF50;
-  color: white;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 1em;
-  margin-top: 20px;
-  transition: background 0.2s;
-}
-
-.next-btn:hover {
-  background: #45a049;
-}
-
-.quiz-results {
-  text-align: center;
-  padding: 30px;
-  background: white;
-  border-radius: 8px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-}
-
-.quiz-results h2 {
-  color: #333;
-  margin-bottom: 20px;
-}
-
-.score {
-  font-size: 2.5em;
-  margin-bottom: 30px;
-  font-weight: bold;
-  text-align: center;
-}
-
-.score-value {
-  font-size: 3.5em;
-  font-weight: 900;
-  margin-bottom: 0.2em;
-}
-
-.score-percentage {
-  font-size: 1.5em;
-  font-weight: 600;
-}
-
-.score-green {
-  color: #2e7d32;
-}
-
-.score-red {
+  background-color: #FFEBEE;
   color: #c62828;
 }
 
-.restart-btn, .back-btn {
-  padding: 12px 24px;
-  margin: 10px;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 1em;
-  transition: background 0.2s;
+.feedback {
+  margin-top: 1.5rem;
+  text-align: center;
 }
 
-.restart-btn {
-  background: #4CAF50;
-  color: white;
-}
-
-.restart-btn:hover {
-  background: #45a049;
-}
-
-.back-btn {
-  background: #f0f0f0;
-  color: #333;
-}
-
-.back-btn:hover {
-  background: #e0e0e0;
-}
-
-.detailed-results {
-  margin: 2rem 0;
-  text-align: left;
-}
-
-.result-item {
-  background: #f8f8f8;
-  border-radius: 8px;
-  padding: 1rem;
-  margin-bottom: 1rem;
-}
-
-.question-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 0.5rem;
-}
-
-.question-number {
-  font-weight: bold;
-  color: #333;
-}
-
-.result-status {
-  font-weight: bold;
-  font-size: 1.2em;
-}
-
-.result-status.correct {
+.correct-text {
   color: #4CAF50;
+  font-weight: bold;
+  font-size: 1.2rem;
+  margin: 0.5rem 0;
 }
 
-.result-status.incorrect {
+.incorrect-text {
   color: #f44336;
+  font-weight: bold;
+  font-size: 1.2rem;
+  margin: 0.5rem 0;
 }
 
-.question-text {
-  margin-bottom: 0.5rem;
-  color: #333;
+.next-btn {
+  background-color: #2196F3;
+  color: white;
+  border: none;
+  padding: 0.8rem 2rem;
+  border-radius: 25px;
+  cursor: pointer;
+  font-size: 1rem;
+  margin-top: 1rem;
+  transition: all 0.2s ease;
 }
 
-.answer-details {
-  margin-top: 0.5rem;
-  padding-top: 0.5rem;
-  border-top: 1px solid #ddd;
-}
-
-.answer-details p {
-  margin: 0.3rem 0;
-  color: #666;
+.next-btn:hover {
+  background-color: #1976D2;
+  transform: translateY(-1px);
 }
 
 .explanation {
-  margin-top: 0.5rem;
-  padding: 0.5rem;
-  background: #fff;
+  margin: 1rem 0;
+  padding: 1rem;
+  background-color: #f8f9fa;
+  border-left: 4px solid #2196F3;
   border-radius: 4px;
-  border-left: 3px solid #4CAF50;
+  color: #333;
+  font-size: 0.95rem;
+  line-height: 1.5;
 }
 </style> 
