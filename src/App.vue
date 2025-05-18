@@ -509,7 +509,6 @@ function processQuizResponse(response, content) {
   return { questions: validQuestions };
 }
 
-// New helper function to find explanations from content
 function findExplanationFromContent(question, content) {
   // Split content into paragraphs
   const paragraphs = content.split(/\n\s*\n/);
@@ -522,80 +521,41 @@ function findExplanationFromContent(question, content) {
       : [])
   ].filter(word => word.length > 3);
   
-  // Find the most relevant paragraph
-  let bestMatch = {
-    paragraph: '',
-    matchCount: 0,
-    matchScore: 0
-  };
-
-  paragraphs.forEach(paragraph => {
+  // Find relevant paragraphs with scoring
+  const relevantParagraphs = paragraphs.map(paragraph => {
     const normalizedParagraph = paragraph.toLowerCase();
-    let matchCount = 0;
     let score = 0;
     
-    // Check for exact phrase matches first
+    // Score exact phrase matches higher
     if (normalizedParagraph.includes(question.text.toLowerCase())) {
-      score += 10;
+      score += 15;
     }
     
-    // Then check individual terms
+    // Score keyword matches
     searchTerms.forEach(term => {
       if (normalizedParagraph.includes(term)) {
-        matchCount++;
-        score += 1;
-        
-        // Bonus points for terms appearing in close proximity
-        const termIndex = normalizedParagraph.indexOf(term);
-        searchTerms.forEach(otherTerm => {
-          if (term !== otherTerm) {
-            const otherIndex = normalizedParagraph.indexOf(otherTerm);
-            if (otherIndex !== -1 && Math.abs(termIndex - otherIndex) < 50) {
-              score += 0.5;
-            }
-          }
-        });
+        score += 2;
       }
     });
 
-    if (score > bestMatch.matchScore || (score === bestMatch.matchScore && matchCount > bestMatch.matchCount)) {
-      bestMatch = {
-        paragraph: paragraph.trim(),
-        matchCount,
-        matchScore: score
-      };
-    }
-  });
+    return {
+      text: paragraph.trim(),
+      score
+    };
+  }).filter(p => p.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 1); // Get most relevant paragraph
 
-  // If we found a matching paragraph, create an explanation
-  if (bestMatch.matchScore > 0) {
-    let explanation = bestMatch.paragraph;
-    
-    // Trim the explanation if it's too long
-    if (explanation.length > 200) {
-      const sentences = explanation.match(/[^.!?]+[.!?]+/g) || [];
-      explanation = sentences
-        .filter(sentence => 
-          searchTerms.some(term => sentence.toLowerCase().includes(term))
-        )
-        .join(' ');
-    }
-    
-    // Add context about correctness
+  if (relevantParagraphs.length > 0) {
+    question.explanation = relevantParagraphs[0].text;
+  } else {
+    // Basic fallback explanations
     if (question.type === 'true-false') {
       const isTrue = question.correctAnswer === 'true';
-      explanation = `This statement is ${isTrue ? 'true' : 'false'} because: ${explanation}`;
+      question.explanation = `This statement is ${isTrue ? 'true' : 'false'} based on the provided content.`;
     } else {
-      explanation = `The correct answer is "${question.options[question.correctAnswer]}" because: ${explanation}`;
-    }
-    
-    question.explanation = explanation;
-  } else {
-    // Fallback explanation
-    if (question.type === 'true-false') {
-      question.explanation = `This statement is ${question.correctAnswer === 'true' ? 'true' : 'false'} according to the provided content.`;
-    } else {
-      question.explanation = `The correct answer is "${question.options[question.correctAnswer]}" based on the provided content.`;
+      const correctOption = question.options[question.correctAnswer];
+      question.explanation = `The correct answer is "${correctOption}" according to the material.`;
     }
   }
 }

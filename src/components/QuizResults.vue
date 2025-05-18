@@ -50,7 +50,7 @@
           </div>
           <div class="explanation-box" :class="{ 'correct': question.isCorrect, 'incorrect': !question.isCorrect }">
             <p class="explanation-label">Explanation:</p>
-            <p class="explanation-text">{{ question.explanation || "No explanation available." }}</p>
+            <p class="explanation-text">{{ generateExplanation(question, question.isCorrect) }}</p>
           </div>
         </div>
       </div>
@@ -108,6 +108,147 @@ function formatAnswer(question, answer) {
     return value.charAt(0).toUpperCase() + value.slice(1);
   }
   return answer;
+}
+
+function rephraseContent(text, isSupporting, question) {
+  // Clean the text of personal info and formatting
+  let cleaned = text.trim()
+    .replace(/([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9._-]+)/gi, '')
+    .replace(/\+\d{2}\s*\d{3}\s*\d{3}\s*\d{4}/g, '')
+    .replace(/\d{4}\s*\+\d{2}\s*\d{3}\s*\d{3}/g, '')
+    .replace(/\d{4}\s*\d{4}/g, '')
+    .replace(/\([^)]*\)/g, '')
+    .replace(/\[[^\]]*\]/g, '')
+    .trim();
+
+  // Extract source material context if available
+  const sourceMaterial = question.sourceMaterial || cleaned;
+  const sourceContext = question.sourceContext || '';
+  
+  // Analyze the question content and source material
+  const questionLower = question.text.toLowerCase();
+  const correctAnswer = question.type === 'multiple-choice' 
+    ? question.options[question.correctAnswer].toLowerCase()
+    : String(question.correctAnswer).toLowerCase();
+
+  // Get specific keywords from the question and answers
+  const questionKeywords = questionLower
+    .replace(/[.,?!]/g, '')
+    .split(/\s+/)
+    .filter(word => word.length > 3)
+    .filter(word => !['what', 'which', 'when', 'where', 'why', 'how', 'does', 'did', 'will', 'should', 'could', 'would', 'this', 'that', 'these', 'those', 'have', 'has', 'had'].includes(word));
+
+  const correctAnswerKeywords = correctAnswer
+    .replace(/[.,?!]/g, '')
+    .split(/\s+/)
+    .filter(word => word.length > 3);
+
+  const userAnswerKeywords = question.type === 'multiple-choice' && question.userAnswer !== undefined
+    ? question.options[question.userAnswer].toLowerCase()
+        .replace(/[.,?!]/g, '')
+        .split(/\s+/)
+        .filter(word => word.length > 3)
+    : [];
+
+  // Combine all relevant keywords
+  const allKeywords = [...new Set([...questionKeywords, ...correctAnswerKeywords, ...userAnswerKeywords])];
+
+  // Find the most relevant sentence from the source material
+  function findRelevantContext(text, keywords) {
+    if (!text) return '';
+    
+    // Split into sentences and clean them
+    const sentences = text.split(/[.!?]+/)
+      .map(s => s.trim())
+      .filter(s => s.length > 0);
+
+    // Score each sentence based on keyword matches
+    const scoredSentences = sentences.map(sentence => {
+      const sentenceLower = sentence.toLowerCase();
+      const matchCount = keywords.reduce((count, keyword) => {
+        return count + (sentenceLower.includes(keyword.toLowerCase()) ? 1 : 0);
+      }, 0);
+      return { sentence, score: matchCount };
+    });
+
+    // Sort by score and get the most relevant sentences (max 2)
+    const relevantSentences = scoredSentences
+      .filter(item => item.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 2)
+      .map(item => item.sentence);
+
+    return relevantSentences.join('. ');
+  }
+
+  // Generate explanation based on the specific question and answer
+  function generateSpecificExplanation() {
+    const relevantContext = findRelevantContext(sourceContext || sourceMaterial, allKeywords);
+    
+    if (isSupporting) {
+      if (relevantContext) {
+        return `Correct! ${relevantContext}`;
+      }
+      return 'Correct! This aligns with the course material.';
+    } else {
+      const correctPart = question.type === 'multiple-choice'
+        ? `The correct answer is "${question.options[question.correctAnswer]}". `
+        : `The correct answer is ${question.correctAnswer}. `;
+        
+      if (relevantContext) {
+        return `${correctPart}Here's why: ${relevantContext}`;
+      }
+      return `${correctPart}Please review this topic in the course material.`;
+    }
+  }
+
+  // Generate the explanation
+  let explanation = generateSpecificExplanation();
+
+  // Add specific feedback for incorrect multiple choice answers
+  if (question.type === 'multiple-choice' && !isSupporting && question.userAnswer !== undefined) {
+    const userChoice = question.options[question.userAnswer];
+    explanation += ` You selected "${userChoice}", which is incorrect.`;
+  }
+
+  return explanation;
+}
+
+function generateExplanation(question, isCorrect) {
+  const explanation = question.explanation || '';
+  if (!explanation) return "No explanation available.";
+
+  if (question.type === 'multiple-choice') {
+    return generateMultipleChoiceExplanation(question, isCorrect);
+  } else {
+    return generateTrueFalseExplanation(question, isCorrect);
+  }
+}
+
+function generateMultipleChoiceExplanation(question, isCorrect) {
+  if (isCorrect) {
+    return rephraseContent(question.explanation, true, question);
+  }
+
+  const userOption = question.options[question.userAnswer];
+  const correctOption = question.options[question.correctAnswer];
+  
+  // Compare the chosen answer with the correct one to explain the difference
+  const explanation = `While "${userOption}" might seem reasonable, it's not the complete picture. ${rephraseContent(question.explanation, false, question)} The correct answer, "${correctOption}", better reflects the full scope of the position.`;
+  
+  return explanation;
+}
+
+function generateTrueFalseExplanation(question, isCorrect) {
+  if (isCorrect) {
+    return rephraseContent(question.explanation, true, question);
+  }
+
+  const userChoice = question.userAnswer ? 'true' : 'false';
+  const correctChoice = question.correctAnswer === 'true' ? 'true' : 'false';
+  
+  // Explain why their understanding needs adjustment
+  return `Your understanding needs a slight adjustment. While you marked this as ${userChoice}, ${rephraseContent(question.explanation, false, question)} This is why the statement is actually ${correctChoice}.`;
 }
 </script>
 
