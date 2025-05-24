@@ -1,123 +1,144 @@
 <template>
   <div class="app-container">
-    <div class="upload-container">
-      <h1>QUIZZy</h1>
-      
-      <div v-if="!quizStarted && !quizFinished && predictedScore === null" class="file-upload-section">
-        <h2>Upload Files</h2>
-        <div class="upload-area" 
-          @dragover.prevent 
-          @drop.prevent="handleDrop"
-          @click="triggerFileInput"
-          role="button"
-          tabindex="0"
-          @keydown.enter="triggerFileInput"
-        >
-          <input 
-            type="file" 
-            @change="handleFileSelect" 
-            accept=".pdf,.docx,.pptx,.txt,.png,.jpg,.jpeg,.tiff,.bmp"
-            ref="fileInput"
-            class="file-input"
+    <Sidebar 
+      :quiz-history="quizHistory" 
+      @create-quiz="handleCreateQuiz"
+      @retake-quiz="handleRetakeQuiz"
+      @clear-history="clearHistory"
+    />
+    <div class="main-content">
+      <div class="upload-container">
+        <h1>QUIZZy</h1>
+        
+        <div v-if="!quizStarted && !quizFinished && predictedScore === null" class="file-upload-section">
+          <h2>Upload Files</h2>
+          <div class="upload-area" 
+            @dragover.prevent 
+            @drop.prevent="handleDrop"
+            @click="triggerFileInput"
+            role="button"
+            tabindex="0"
+            @keydown.enter="triggerFileInput"
           >
-          <div class="upload-prompt">
-            <p>Drag and drop files here or click to select</p>
-            <div class="supported-formats">
-              <p>Supported formats:</p>
-              <ul>
-                <li><span class="format-icon">📄</span> Documents (PDF, DOCX)</li>
-                <li><span class="format-icon">📊</span> Presentations (PPTX)</li>
-                <li><span class="format-icon">📝</span> Text files (TXT)</li>
-              </ul>
+            <input 
+              type="file" 
+              @change="handleFileSelect" 
+              accept=".pdf,.docx,.pptx,.txt,.png,.jpg,.jpeg,.tiff,.bmp"
+              ref="fileInput"
+              class="file-input"
+            >
+            <div class="upload-prompt">
+              <p>Drag and drop files here or click to select</p>
+              <div class="supported-formats">
+                <p>Supported formats:</p>
+                <ul>
+                  <li><span class="format-icon">📄</span> Documents (PDF, DOCX)</li>
+                  <li><span class="format-icon">📊</span> Presentations (PPTX)</li>
+                  <li><span class="format-icon">📝</span> Text files (TXT)</li>
+                </ul>
+              </div>
             </div>
           </div>
-        </div>
-        
-        <div v-if="hasFileErrors" class="error-section">
-          <FileErrorDisplay
-            :extraction-errors="extractionErrors"
-            :unsupported-files="unsupportedFiles"
-          />
-        </div>
-
-        <div v-if="selectedFiles.length > 0" class="selected-files">
-          <h3>Selected Files:</h3>
-          <ul>
-            <li v-for="(file, index) in selectedFiles" :key="index" class="file-item">
-              <span class="file-name">{{ file.name }}</span>
-              <button @click="removeFile(index)" class="remove-btn" title="Remove file">×</button>
-            </li>
-          </ul>
-        </div>
-
-        <div class="questions-section">
-          <h2>Number of Questions</h2>
-          <div class="question-input">
-            <input
-              type="number"
-              v-model="questionCount"
-              min="1"
-              max="20"
-              placeholder="Enter number of questions"
+          
+          <div v-if="hasFileErrors" class="error-section">
+            <FileErrorDisplay
+              :extraction-errors="extractionErrors"
+              :unsupported-files="unsupportedFiles"
             />
           </div>
-        </div>
 
-        <button 
-          class="submit-btn" 
-          :disabled="!isFormValid || isLoading"
-          @click="handleSubmit"
-        >
-          {{ isLoading ? 'Generating Questions...' : 'Submit' }}
-        </button>
-      </div>
+          <div v-if="selectedFiles.length > 0" class="selected-files">
+            <h3>Selected Files:</h3>
+            <ul>
+              <li v-for="(file, index) in selectedFiles" :key="index" class="file-item">
+                <span class="file-name">{{ file.name }}</span>
+                <button @click="removeFile(index)" class="remove-btn" title="Remove file">×</button>
+              </li>
+            </ul>
+          </div>
 
-      <div v-if="predictedScore !== null && !quizStarted && !quizFinished">
-        <div class="predicted-score-container">
-          <h2>Ready to Start!</h2>
-          <div class="score-prediction">
-            <div class="score-circle" :class="getPredictedScoreClass">
-              <span class="predicted-value">{{ predictedScore }}%</span>
-              <span class="prediction-label">Predicted Score</span>
+          <div class="questions-section">
+            <h2>Number of Questions</h2>
+            <div class="question-input">
+              <input
+                type="number"
+                v-model="questionCount"
+                min="1"
+                max="20"
+                placeholder="Enter number of questions"
+              />
             </div>
           </div>
-          <p class="prediction-explanation">
-            Based on your study material, we predict you'll score around {{ predictedScore }}%.
-          </p>
-          <button class="start-quiz-btn" @click="startQuiz">Start Quiz</button>
+
+          <button 
+            class="submit-btn" 
+            :disabled="!isFormValid || isLoading"
+            @click="handleSubmit"
+          >
+            {{ isLoading ? 'Generating Questions...' : 'Submit' }}
+          </button>
+        </div>
+
+        <div v-if="predictedScore !== null && !quizStarted && !quizFinished">
+          <div class="predicted-score-container">
+            <h2>Ready to Start!</h2>
+            <div class="score-prediction">
+              <div class="score-circle" :class="getPredictedScoreClass">
+                <span class="predicted-value">{{ predictedScore }}%</span>
+                <span class="prediction-label">Predicted Score</span>
+              </div>
+            </div>
+            <p class="prediction-explanation">
+              Based on your study material, we predict you'll score around {{ predictedScore }}%.
+            </p>
+            <button class="start-quiz-btn" @click="startQuiz">Start Quiz</button>
+          </div>
+        </div>
+
+        <FlashcardQuiz
+          v-if="quizStarted && !quizFinished"
+          :questions="adaptiveQuestions"
+          :total-questions="Number(questionCount)"
+          @quiz-completed="handleQuizComplete"
+        />
+
+        <QuizResults
+          v-if="quizFinished"
+          :questions="formatQuestionsForResults"
+          :user-answers="formatUserAnswersForResults"
+          :score="correctAnswersCount"
+          :predicted-score="predictedScore"
+          @restart="restartQuiz"
+          @go-back="resetToMainScreen"
+        />
+
+        <div v-if="error" class="error-message">
+          {{ error }}
         </div>
       </div>
+    </div>
 
-      <FlashcardQuiz
-        v-if="quizStarted && !quizFinished"
-        :questions="adaptiveQuestions"
-        :total-questions="Number(questionCount)"
-        @quiz-completed="handleQuizComplete"
-      />
-
-      <QuizResults
-        v-if="quizFinished"
-        :questions="formatQuestionsForResults"
-        :user-answers="formatUserAnswersForResults"
-        :score="correctAnswersCount"
-        :predicted-score="predictedScore"
-        @restart="restartQuiz"
-        @go-back="resetToMainScreen"
-      />
-
-      <div v-if="error" class="error-message">
-        {{ error }}
+    <!-- Loading Overlay -->
+    <div v-if="isLoading" class="loading-overlay">
+      <div class="loading-content">
+        <div class="typewriter">Generating quiz</div>
+        <div class="dots">
+          <span>.</span>
+          <span>.</span>
+          <span>.</span>
+        </div>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import axios from 'axios';
 import FileErrorDisplay from './components/FileErrorDisplay.vue';
 import QuizResults from './components/QuizResults.vue';
 import FlashcardQuiz from './components/FlashcardQuiz.vue';
+import Sidebar from './components/Sidebar.vue';
 
 // File handling state
 const selectedFiles = ref([]);
@@ -135,6 +156,21 @@ const quizFinished = ref(false);
 const adaptiveQuestions = ref([]);
 const userResponses = ref([]);
 const extractedContent = ref('');
+
+// Add quiz history state
+const quizHistory = ref([]);
+
+// Add isRetaking flag to track retakes
+const isRetaking = ref(false);
+const retakeIndex = ref(-1);
+
+// Load quiz history from localStorage on mount
+onMounted(() => {
+  const savedHistory = localStorage.getItem('quizHistory');
+  if (savedHistory) {
+    quizHistory.value = JSON.parse(savedHistory);
+  }
+});
 
 // Computed properties
 const isFormValid = computed(() => {
@@ -240,8 +276,14 @@ const startQuiz = () => {
 
 const handleQuizComplete = (responses) => {
   userResponses.value = responses;
-  quizStarted.value = false;
+  // Update the adaptiveQuestions with user answers
+  adaptiveQuestions.value = adaptiveQuestions.value.map((question, index) => ({
+    ...question,
+    userAnswer: responses[index].userAnswer,
+    isCorrect: responses[index].correct
+  }));
   quizFinished.value = true;
+  saveQuizResults();
 };
 
 const restartQuiz = () => {
@@ -709,16 +751,139 @@ const formatUserAnswersForResults = computed(() => {
 const correctAnswersCount = computed(() => {
   return userResponses.value.filter(r => r.correct).length;
 });
+
+// Update the calculateScore function
+const calculateScore = () => {
+  if (!userResponses.value.length) return 0;
+  const correctAnswers = userResponses.value.filter(r => r.correct).length;
+  return Math.round((correctAnswers / userResponses.value.length) * 100);
+};
+
+// Update the saveQuizResults function to handle retakes
+const saveQuizResults = () => {
+  const quizResult = {
+    fileName: selectedFiles.value[0]?.name || 'Untitled Quiz',
+    questionCount: Number(questionCount.value),
+    predictedScore: predictedScore.value,
+    actualScore: calculateScore(),
+    date: new Date(),
+    fileContent: extractedContent.value
+  };
+  
+  if (isRetaking.value && retakeIndex.value !== -1) {
+    // Update existing record
+    quizHistory.value[retakeIndex.value] = {
+      ...quizHistory.value[retakeIndex.value],
+      actualScore: quizResult.actualScore,
+      date: quizResult.date
+    };
+  } else {
+    // Add new record
+    quizHistory.value.unshift(quizResult);
+  }
+  
+  localStorage.setItem('quizHistory', JSON.stringify(quizHistory.value));
+  
+  // Reset retake flags
+  isRetaking.value = false;
+  retakeIndex.value = -1;
+};
+
+// Update the handleRetakeQuiz function to set retake flags
+const handleRetakeQuiz = async (quizToRetake) => {
+  // Find the index of the quiz being retaken
+  retakeIndex.value = quizHistory.value.findIndex(quiz => 
+    quiz.fileName === quizToRetake.fileName && 
+    quiz.questionCount === quizToRetake.questionCount &&
+    quiz.fileContent === quizToRetake.fileContent
+  );
+  
+  if (retakeIndex.value === -1) {
+    console.error('Could not find original quiz to retake');
+    return;
+  }
+  
+  isRetaking.value = true;
+  
+  // Reset quiz state
+  quizStarted.value = false;
+  quizFinished.value = false;
+  predictedScore.value = null;
+  error.value = '';
+  adaptiveQuestions.value = [];
+  userResponses.value = [];
+  
+  // Set the question count from the previous quiz
+  questionCount.value = quizToRetake.questionCount.toString();
+  
+  // Create a dummy file with the same name
+  const file = new File([''], quizToRetake.fileName, {
+    type: 'text/plain'
+  });
+  
+  // Set the selected file and content
+  selectedFiles.value = [file];
+  extractedContent.value = quizToRetake.fileContent;
+  
+  // Generate new quiz using the stored content
+  try {
+    isLoading.value = true;
+    const requestedQuestionCount = Math.min(Number(questionCount.value) * 3, 30);
+    
+    const response = await generateQuestions(extractedContent.value, requestedQuestionCount);
+    const processedQuiz = processQuizResponse(response, extractedContent.value);
+    
+    adaptiveQuestions.value = selectQuestions(processedQuiz.questions);
+    predictedScore.value = calculatePredictedScore();
+  } catch (err) {
+    error.value = `Error generating questions: ${err.response?.data?.error?.message || err.message}`;
+    // Reset retake flags on error
+    isRetaking.value = false;
+    retakeIndex.value = -1;
+  } finally {
+    isLoading.value = false;
+  }
+};
+
+// Update handleCreateQuiz to reset retake flags
+const handleCreateQuiz = () => {
+  // Reset the quiz state
+  quizStarted.value = false;
+  quizFinished.value = false;
+  predictedScore.value = null;
+  selectedFiles.value = [];
+  questionCount.value = '';
+  error.value = '';
+  extractedContent.value = '';
+  adaptiveQuestions.value = [];
+  userResponses.value = [];
+  isRetaking.value = false;
+  retakeIndex.value = -1;
+};
+
+// Add the clearHistory function
+const clearHistory = () => {
+  if (confirm('Are you sure you want to clear all quiz history? This cannot be undone.')) {
+    quizHistory.value = [];
+    localStorage.removeItem('quizHistory');
+  }
+};
 </script>
 
 <style scoped>
 .app-container {
   min-height: 100vh;
   display: flex;
-  justify-content: center;
-  align-items: center;
   background-color: #f5f5f5;
   font-family: "Helvetica", "Arial", sans-serif;
+}
+
+.main-content {
+  flex: 1;
+  margin-left: 280px; /* Same as sidebar width */
+  padding: 2rem;
+  display: flex;
+  justify-content: center;
 }
 
 .upload-container {
@@ -1212,5 +1377,71 @@ h2 {
   background-color: #1976D2;
   transform: translateY(-2px);
   box-shadow: 0 4px 8px rgba(33, 150, 243, 0.4);
+}
+
+.loading-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(255, 255, 255, 0.85);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+  backdrop-filter: blur(2px);
+}
+
+.loading-content {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 2rem;
+  color: #333;
+  font-weight: 500;
+}
+
+.typewriter {
+  overflow: hidden;
+  white-space: nowrap;
+  animation: typing 3s steps(14) infinite;
+  border-right: 3px solid #4CAF50;
+}
+
+.dots {
+  display: flex;
+}
+
+.dots span {
+  opacity: 0;
+  animation: dot 1.5s infinite;
+  animation-fill-mode: both;
+}
+
+.dots span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.dots span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes typing {
+  0%, 90%, 100% {
+    width: 0;
+  }
+  30%, 60% {
+    width: 14ch;
+  }
+}
+
+@keyframes dot {
+  0%, 100% {
+    opacity: 0;
+  }
+  50% {
+    opacity: 1;
+  }
 }
 </style> 

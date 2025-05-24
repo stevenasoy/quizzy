@@ -14,10 +14,10 @@
 
     <div class="score-comparison" v-if="predictedScore">
       <p>You scored {{ scorePercentage }}%. Predicted score was {{ predictedScore }}%.</p>
-      <p v-if="scorePercentage >= predictedScore + 10" class="comparison-text success">
-        You outperformed the prediction! Great job!
+      <p v-if="scorePercentage > predictedScore + 5" class="comparison-text success">
+        Excellent! You surpassed the prediction!
       </p>
-      <p v-else-if="scorePercentage >= predictedScore - 10" class="comparison-text neutral">
+      <p v-else-if="Math.abs(scorePercentage - predictedScore) <= 5" class="comparison-text neutral">
         You were close to the prediction!
       </p>
       <p v-else class="comparison-text warning">
@@ -56,9 +56,9 @@
       </div>
     </div>
 
-    <div class="button-group">
-      <button @click="$emit('restart')" class="restart-btn">Redo Quiz</button>
-      <button @click="$emit('go-back')" class="back-btn">Back to Main</button>
+    <div class="return-hint">
+      <p>You can retake this quiz anytime from the history panel</p>
+      <p>Click "Create New Quiz" to start a new quiz with different material</p>
     </div>
   </div>
 </template>
@@ -85,8 +85,6 @@ const props = defineProps({
     default: null
   }
 });
-
-defineEmits(['restart', 'go-back']);
 
 const totalQuestions = computed(() => props.questions.length);
 const scorePercentage = computed(() => {
@@ -471,36 +469,32 @@ function generateTrueFalseExplanation(question, isCorrect) {
   margin: 0;
 }
 
-.button-group {
-  display: flex;
-  gap: 1rem;
-  justify-content: center;
+.return-hint {
   margin-top: 2rem;
+  text-align: center;
+  color: #666;
+  background: #f5f5f5;
+  padding: 1.5rem;
+  border-radius: 8px;
 }
 
-.button-group button {
-  padding: 0.8rem 2rem;
-  color: #fff;
-  border: none;
-  border-radius: 4px;
-  font-size: 1rem;
-  cursor: pointer;
-  transition: background-color 0.3s;
+.return-hint p {
+  margin: 0.5rem 0;
+  font-size: 0.95rem;
 }
 
-.restart-btn {
-  background: #4CAF50;
+.return-hint p:first-child {
+  color: #4CAF50;
+  font-weight: 500;
 }
 
-.restart-btn:hover {
-  background: #388e3c;
+.return-hint p:last-child {
+  color: #2196F3;
+  font-weight: 500;
 }
 
-.back-btn {
-  background: #666;
-}
-
-.back-btn:hover {
-  background: #555;
+/* Remove button styles */
+.button-group, .restart-btn, .back-btn {
+  display: none;
 }
 </style> 
