@@ -279,8 +279,8 @@ const handleQuizComplete = (responses) => {
   // Update the adaptiveQuestions with user answers
   adaptiveQuestions.value = adaptiveQuestions.value.map((question, index) => ({
     ...question,
-    userAnswer: responses[index].userAnswer,
-    isCorrect: responses[index].correct
+    userAnswer: responses[index]?.userAnswer,
+    isCorrect: responses[index]?.correct
   }));
   quizFinished.value = true;
   saveQuizResults();
@@ -478,17 +478,13 @@ function processQuizResponse(response, content) {
           const letter = optionMatch[1].toUpperCase();
           let option = optionMatch[2].trim();
           
-          // Check for asterisk at start or end of option
           if (option.startsWith('*') || option.endsWith('*')) {
             currentQuestion.correctAnswer = letter;
             option = option.replace(/^\*|\*$/g, '').trim();
           }
           currentQuestion.options[letter] = option;
-        } else if (line.toLowerCase().startsWith('explanation:')) {
-          collectingOptions = false;
         }
       } else if (currentQuestion.type === 'true-false') {
-        // Look for the Answer: line specifically
         if (line.toLowerCase().startsWith('answer:')) {
           const answer = line.substring(7).trim().toLowerCase();
           if (answer.includes('true*') || answer.includes('*true')) {
@@ -496,13 +492,19 @@ function processQuizResponse(response, content) {
           } else if (answer.includes('false*') || answer.includes('*false')) {
             currentQuestion.correctAnswer = 'false';
           }
-        } else if (line.toLowerCase().startsWith('explanation:')) {
-          collectingOptions = false;
+        }
+      }
+      
+      if (line.toLowerCase().startsWith('difficulty:')) {
+        const difficulty = line.substring(10).trim().toLowerCase();
+        if (['easy', 'medium', 'hard'].includes(difficulty)) {
+          currentQuestion.difficulty = difficulty;
         }
       }
     }
   }
   
+  // Don't forget to add the last question
   if (currentQuestion) {
     findExplanationFromContent(currentQuestion, content);
     questions.push(currentQuestion);
@@ -511,33 +513,10 @@ function processQuizResponse(response, content) {
   // Validate and fix questions
   const validQuestions = questions.filter(q => {
     if (q.type === 'multiple-choice') {
-      // Must have at least 2 options and a correct answer
-      const hasEnoughOptions = Object.keys(q.options).length >= 2;
-      if (!hasEnoughOptions || !q.correctAnswer) {
-        console.warn('Invalid multiple choice question:', q);
-        return false;
-      }
-      return true;
+      return Object.keys(q.options).length >= 2 && q.correctAnswer;
     } else if (q.type === 'true-false') {
-      // For true/false questions, try to infer the answer from the explanation if not explicitly set
-      if (!q.correctAnswer && q.explanation) {
-        const lowerExplanation = q.explanation.toLowerCase();
-        if (lowerExplanation.includes('this statement is true')) {
-          q.correctAnswer = 'true';
-        } else if (lowerExplanation.includes('this statement is false')) {
-          q.correctAnswer = 'false';
-        }
-      }
-      
-      // If still no answer, warn and default to false (since defaulting to true might be misleading)
       if (!q.correctAnswer) {
-        console.warn('True/False question missing correct answer, inferring from context:', q);
-        // Look for negative indicators in the question
-        const questionLower = q.text.toLowerCase();
-        const hasNegativeIndicators = ['only', 'solely', 'never', 'always', 'all', 'none'].some(word => 
-          questionLower.includes(word)
-        );
-        q.correctAnswer = hasNegativeIndicators ? 'false' : 'true';
+        q.correctAnswer = 'false'; // Default to false if not specified
       }
       return true;
     }
@@ -603,40 +582,46 @@ function findExplanationFromContent(question, content) {
 }
 
 function selectQuestions(questions) {
-  const shuffledQuestions = [...questions]
-    .sort(() => Math.random() - 0.5)
-    .filter((question, index, self) => 
-      index === self.findIndex((q) => 
-        q.text.toLowerCase().replace(/[^\w\s]/g, '') === 
-        question.text.toLowerCase().replace(/[^\w\s]/g, '')
-      )
-    );
+  // First, shuffle all questions
+  const shuffledQuestions = [...questions].sort(() => Math.random() - 0.5);
+  
+  // Remove duplicates while preserving order
+  const uniqueQuestions = shuffledQuestions.filter((question, index, self) => 
+    index === self.findIndex((q) => 
+      q.text.toLowerCase().replace(/[^\w\s]/g, '') === 
+      question.text.toLowerCase().replace(/[^\w\s]/g, '')
+    )
+  );
 
-  const selectedQuestions = [];
-  const targetPerDifficulty = Math.ceil(Number(questionCount.value) / 3);
-  const difficultyCount = { easy: 0, medium: 0, hard: 0 };
-
-  for (const difficulty of ['easy', 'medium', 'hard']) {
-    const questionsOfDifficulty = shuffledQuestions.filter(q => 
-      q.difficulty === difficulty && !selectedQuestions.includes(q)
-    );
-    
-    for (const question of questionsOfDifficulty) {
-      if (difficultyCount[difficulty] < targetPerDifficulty && 
-          selectedQuestions.length < Number(questionCount.value)) {
-        selectedQuestions.push(question);
-        difficultyCount[difficulty]++;
-      }
-    }
+  // Make sure we have enough questions
+  if (uniqueQuestions.length < Number(questionCount.value)) {
+    console.warn(`Only ${uniqueQuestions.length} unique questions available for ${questionCount.value} requested questions`);
+    return uniqueQuestions;
   }
 
-  while (selectedQuestions.length < Number(questionCount.value)) {
-    const remainingQuestion = shuffledQuestions.find(q => !selectedQuestions.includes(q));
-    if (remainingQuestion) {
-      selectedQuestions.push(remainingQuestion);
-    } else {
-      break;
+  // Select the requested number of questions while maintaining difficulty distribution
+  const targetPerDifficulty = Math.ceil(Number(questionCount.value) / 3);
+  const selectedQuestions = [];
+  const difficultyCount = { easy: 0, medium: 0, hard: 0 };
+
+  // First pass: try to get equal distribution
+  uniqueQuestions.forEach(question => {
+    const difficulty = question.difficulty || 'medium';
+    if (difficultyCount[difficulty] < targetPerDifficulty && 
+        selectedQuestions.length < Number(questionCount.value)) {
+      selectedQuestions.push(question);
+      difficultyCount[difficulty]++;
     }
+  });
+
+  // Second pass: fill remaining slots if any
+  if (selectedQuestions.length < Number(questionCount.value)) {
+    uniqueQuestions.forEach(question => {
+      if (!selectedQuestions.includes(question) && 
+          selectedQuestions.length < Number(questionCount.value)) {
+        selectedQuestions.push(question);
+      }
+    });
   }
 
   return selectedQuestions;
