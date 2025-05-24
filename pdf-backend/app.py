@@ -13,19 +13,10 @@ load_dotenv()
 
 app = Flask(__name__)
 # Configure CORS
-CORS(app, resources={
-    r"/*": {
-        "origins": [
-            "http://localhost:8080",  # Local development
-            "http://localhost:5173",  # Vite dev server
-            "https://quizzy-mocha-chi.vercel.app",  # Your frontend URL
-            "https://*.vercel.app"  # Any Vercel subdomain
-        ],
-        "methods": ["GET", "POST", "OPTIONS"],
-        "allow_headers": ["Content-Type", "Authorization"],
-        "supports_credentials": True
-    }
-})
+CORS(app, resources={r"/*": {"origins": [
+    "http://localhost:8080",  # Local development
+    "http://localhost:3000"   # Alternative local port
+]}})
 
 def get_file_type(filename, content_type):
     """Determine file type from both filename and content type"""
