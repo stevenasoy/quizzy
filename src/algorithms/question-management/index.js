@@ -17,19 +17,6 @@ export function shuffleQuestions(array) {
 }
 
 /**
- * Detects and removes duplicate questions
- * @param {Array} questions - Array of questions
- * @returns {Array} Array with duplicates removed
- */
-export function removeDuplicates(questions) {
-  return questions.filter((question, index, self) => 
-    index === self.findIndex((q) => 
-      normalizeQuestion(q.text) === normalizeQuestion(question.text)
-    )
-  );
-}
-
-/**
  * Distributes questions by difficulty
  * @param {Array} questions - Array of questions
  * @param {number} targetCount - Desired number of questions
@@ -53,32 +40,6 @@ export function distributeByDifficulty(questions, targetCount) {
       }
     }
   }
-
-  return selectedQuestions;
-}
-
-/**
- * Distributes questions by type
- * @param {Array} questions - Array of questions
- * @param {Object} typeDistribution - Desired distribution of question types
- * @returns {Array} Questions distributed by type
- */
-export function distributeByType(questions, typeDistribution) {
-  const selectedQuestions = [];
-  const typeCount = {};
-  
-  // Initialize type counts
-  Object.keys(typeDistribution).forEach(type => {
-    typeCount[type] = 0;
-  });
-
-  questions.forEach(question => {
-    const type = question.type;
-    if (typeCount[type] < typeDistribution[type]) {
-      selectedQuestions.push(question);
-      typeCount[type]++;
-    }
-  });
 
   return selectedQuestions;
 }
