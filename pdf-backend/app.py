@@ -13,10 +13,7 @@ load_dotenv()
 
 app = Flask(__name__)
 # Configure CORS
-CORS(app, resources={r"/*": {"origins": [
-    "http://localhost:8080",  # Local development
-    "http://localhost:3000"   # Alternative local port
-]}})
+CORS(app)
 
 def get_file_type(filename, content_type):
     """Determine file type from both filename and content type"""
