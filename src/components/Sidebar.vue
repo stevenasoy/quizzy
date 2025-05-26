@@ -9,7 +9,7 @@
     
     <div class="quiz-history">
       <h3>Quiz History</h3>
-      <div v-if="!selectedQuiz" class="history-list">
+      <div class="history-list">
         <div v-if="quizHistory.length === 0" class="empty-state">
           <p>No quiz history yet</p>
           <small>Complete a quiz to see your performance here</small>
@@ -17,10 +17,10 @@
         <div v-else v-for="(quiz, index) in quizHistory" 
              :key="index" 
              class="history-item"
-             @click="selectQuiz(quiz)"
+             @click="$emit('select-quiz', quiz)"
              role="button"
              tabindex="0"
-             @keyup.enter="selectQuiz(quiz)">
+             @keyup.enter="$emit('select-quiz', quiz)">
           <div class="score-section">
             <div class="score-badge" :class="getScoreClass(quiz.actualScore)">
               {{ quiz.actualScore }}%
@@ -41,16 +41,9 @@
           </div>
         </div>
       </div>
-
-      <QuizHistoryDetails
-        v-else
-        :quiz="selectedQuiz"
-        @retake-quiz="$emit('retake-quiz', $event)"
-        @close="selectedQuiz = null"
-      />
     </div>
 
-    <div v-if="quizHistory.length > 0 && !selectedQuiz" class="clear-history-container">
+    <div v-if="quizHistory.length > 0" class="clear-history-container">
       <button class="clear-history-btn" @click="$emit('clear-history')">
         <span class="trash-icon">🗑️</span>
         Clear History
@@ -60,8 +53,7 @@
 </template>
 
 <script setup>
-import { ref } from 'vue';
-import QuizHistoryDetails from './QuizHistoryDetails.vue';
+import { defineProps, defineEmits } from 'vue';
 
 defineProps({
   quizHistory: {
@@ -70,13 +62,7 @@ defineProps({
   }
 });
 
-defineEmits(['create-quiz', 'retake-quiz', 'clear-history']);
-
-const selectedQuiz = ref(null);
-
-const selectQuiz = (quiz) => {
-  selectedQuiz.value = quiz;
-};
+defineEmits(['create-quiz', 'retake-quiz', 'clear-history', 'select-quiz']);
 
 const getScoreClass = (score) => {
   if (score >= 90) return 'excellent';
@@ -115,11 +101,11 @@ const formatDate = (date) => {
   position: fixed;
   left: 0;
   top: 0;
-  overflow-y: auto;
 }
 
 .sidebar-header {
   margin-bottom: 2rem;
+  flex-shrink: 0;
 }
 
 .create-quiz-btn {
@@ -153,18 +139,25 @@ const formatDate = (date) => {
 
 .quiz-history {
   flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 200px); /* Reserve space for header and clear history */
 }
 
 .quiz-history h3 {
   color: #333;
   margin-bottom: 1rem;
   font-size: 1.1rem;
+  flex-shrink: 0;
 }
 
 .history-list {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
+  flex: 1;
+  overflow-y: auto;
+  margin-bottom: 1.5rem;
+  padding-right: 0.5rem;
+  max-height: calc(100% - 3rem); /* Account for the h3 height */
 }
 
 .history-item {
@@ -293,14 +286,17 @@ const formatDate = (date) => {
 }
 
 .clear-history-container {
-  margin-top: 1rem;
-  padding-top: 1rem;
+  flex-shrink: 0;
+  padding: 1rem 0;
   border-top: 1px solid #e0e0e0;
+  background-color: #f8f9fa;
+  position: sticky;
+  bottom: 0;
 }
 
 .clear-history-btn {
   width: 100%;
-  padding: 0.75rem;
+  padding: 1rem;
   background-color: #f5f5f5;
   color: #666;
   border: none;
@@ -312,6 +308,7 @@ const formatDate = (date) => {
   justify-content: center;
   gap: 0.5rem;
   transition: all 0.2s ease;
+  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.05);
 }
 
 .clear-history-btn:hover {
@@ -320,6 +317,6 @@ const formatDate = (date) => {
 }
 
 .trash-icon {
-  font-size: 1rem;
+  font-size: 0.9rem;
 }
 </style> 

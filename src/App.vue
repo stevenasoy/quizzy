@@ -5,12 +5,21 @@
       @create-quiz="handleCreateQuiz"
       @retake-quiz="handleRetakeQuiz"
       @clear-history="clearHistory"
+      @select-quiz="handleQuizSelect"
     />
     <div class="main-content">
       <div class="upload-container">
         <h1>QUIZZy</h1>
         
-        <div v-if="!quizStarted && !quizFinished && predictedScore === null" class="file-upload-section">
+        <div v-if="selectedQuiz" class="quiz-details-container">
+          <QuizHistoryDetails
+            :quiz="selectedQuiz"
+            @retake-quiz="handleRetakeQuiz"
+            @close="selectedQuiz = null"
+          />
+        </div>
+
+        <div v-else-if="!quizStarted && !quizFinished && predictedScore === null" class="file-upload-section">
           <h2>Upload Files</h2>
           <div class="upload-area" 
             @dragover.prevent 
@@ -139,6 +148,7 @@ import FileErrorDisplay from './components/FileErrorDisplay.vue';
 import QuizResults from './components/QuizResults.vue';
 import FlashcardQuiz from './components/FlashcardQuiz.vue';
 import Sidebar from './components/Sidebar.vue';
+import QuizHistoryDetails from './components/QuizHistoryDetails.vue';
 
 // File handling state
 const selectedFiles = ref([]);
@@ -156,6 +166,7 @@ const quizFinished = ref(false);
 const adaptiveQuestions = ref([]);
 const userResponses = ref([]);
 const extractedContent = ref('');
+const selectedQuiz = ref(null);
 
 // Add quiz history state
 const quizHistory = ref([]);
@@ -833,7 +844,16 @@ const saveQuizResults = () => {
     predictedScore: predictedScore.value,
     actualScore: calculateScore(),
     date: new Date(),
-    fileContent: extractedContent.value
+    fileContent: extractedContent.value,
+    questions: adaptiveQuestions.value.map((q, index) => ({
+      text: q.text,
+      type: q.type,
+      options: q.options,
+      userAnswer: userResponses.value[index]?.userAnswer,
+      correctAnswer: q.correctAnswer,
+      isCorrect: userResponses.value[index]?.correct,
+      explanation: q.explanation
+    }))
   };
   
   if (isRetaking.value && retakeIndex.value !== -1) {
@@ -841,7 +861,8 @@ const saveQuizResults = () => {
     quizHistory.value[retakeIndex.value] = {
       ...quizHistory.value[retakeIndex.value],
       actualScore: quizResult.actualScore,
-      date: quizResult.date
+      date: quizResult.date,
+      questions: quizResult.questions
     };
   } else {
     // Add new record
@@ -914,6 +935,7 @@ const handleRetakeQuiz = async (quizToRetake) => {
 // Update handleCreateQuiz to reset retake flags
 const handleCreateQuiz = () => {
   // Reset the quiz state
+  selectedQuiz.value = null;
   quizStarted.value = false;
   quizFinished.value = false;
   predictedScore.value = null;
@@ -964,6 +986,17 @@ function isSimilarQuestion(q1, q2) {
 
   return overlapRatio > 0.7; // If more than 70% of words overlap, consider them similar
 }
+
+// Add function to handle quiz selection
+const handleQuizSelect = (quiz) => {
+  // Reset any active quiz states
+  quizStarted.value = false;
+  quizFinished.value = false;
+  predictedScore.value = null;
+  
+  // Set the selected quiz
+  selectedQuiz.value = quiz;
+};
 </script>
 
 <style scoped>
@@ -979,16 +1012,20 @@ function isSimilarQuestion(q1, q2) {
   margin-left: 280px; /* Same as sidebar width */
   padding: 2rem;
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  min-height: 100vh;
+  background-color: #f5f5f5;
+  overflow-y: auto;
 }
 
 .upload-container {
+  width: 90%;
+  max-width: 800px;
+  margin: 0 auto;
   background-color: white;
   padding: 2rem;
   border-radius: 8px;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-  width: 90%;
-  max-width: 600px;
 }
 
 h1 {
@@ -1539,5 +1576,12 @@ h2 {
   50% {
     opacity: 1;
   }
+}
+
+.quiz-details-container {
+  width: 100%;
+  max-width: 800px;
+  margin: 0 auto;
+  position: relative;
 }
 </style> 

@@ -1,6 +1,7 @@
 <template>
   <div class="quiz-history-details">
     <div class="header">
+      <button class="back-btn" @click="$emit('close')">← Back</button>
       <h2>Quiz Results</h2>
       <div class="file-info">
         <span class="file-name">{{ quiz.fileName }}</span>
@@ -41,9 +42,36 @@
       Retake Quiz
     </button>
 
-    <button class="back-btn" @click="$emit('close')">
-      Back to History
-    </button>
+    <div v-if="quiz.questions && quiz.questions.length > 0" class="detailed-results">
+      <h3>Detailed Results</h3>
+      <div v-for="(question, index) in quiz.questions" :key="index" class="result-item">
+        <div class="question-header">
+          <span class="question-number">Question {{ index + 1 }}</span>
+          <span :class="['result-status', question.isCorrect ? 'correct' : 'wrong']">
+            {{ question.isCorrect ? '✓' : '✗' }}
+          </span>
+        </div>
+        <p class="question-text">{{ question.text }}</p>
+        <div class="answer-details" :class="{ 'incorrect': !question.isCorrect }">
+          <div class="answer-row">
+            <div class="user-answer">
+              <strong>Your answer:</strong> 
+              <span :class="{ 'incorrect-text': !question.isCorrect }">
+                {{ formatAnswer(question, question.userAnswer) }}
+              </span>
+            </div>
+            <div class="correct-answer">
+              <strong>Correct answer:</strong>
+              <span class="correct-text">{{ formatAnswer(question, question.correctAnswer) }}</span>
+            </div>
+          </div>
+          <div v-if="question.explanation" class="explanation-box" :class="{ 'correct': question.isCorrect, 'incorrect': !question.isCorrect }">
+            <p class="explanation-label">Explanation:</p>
+            <p class="explanation-text">{{ question.explanation }}</p>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -61,6 +89,19 @@ defineEmits(['retake-quiz', 'close']);
 
 const formatDate = (date) => {
   return new Date(date).toLocaleString();
+};
+
+const formatAnswer = (question, answer) => {
+  if (!answer && answer !== false) return 'Not answered';
+  
+  if (question.type === 'multiple-choice') {
+    const optionText = question.options[answer];
+    return optionText ? `${answer}) ${optionText}` : answer;
+  } else if (question.type === 'true-false') {
+    const value = String(answer).toLowerCase();
+    return value.charAt(0).toUpperCase() + value.slice(1);
+  }
+  return answer;
 };
 
 const getScoreClass = (score) => {
@@ -94,7 +135,7 @@ const getPerformanceText = (actual, predicted) => {
   background: white;
   border-radius: 12px;
   padding: 2rem;
-  max-width: 600px;
+  max-width: 800px;
   margin: 0 auto;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
 }
@@ -102,6 +143,7 @@ const getPerformanceText = (actual, predicted) => {
 .header {
   text-align: center;
   margin-bottom: 2rem;
+  position: relative;
 }
 
 .header h2 {
@@ -232,7 +274,28 @@ const getPerformanceText = (actual, predicted) => {
   color: #f44336;
 }
 
-.retake-btn, .back-btn {
+.back-btn {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: #666;
+  font-size: 1rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  transition: color 0.2s;
+}
+
+.back-btn:hover {
+  color: #333;
+}
+
+.retake-btn {
   width: 100%;
   padding: 1rem;
   border: none;
@@ -241,10 +304,7 @@ const getPerformanceText = (actual, predicted) => {
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s ease;
-  margin-bottom: 1rem;
-}
-
-.retake-btn {
+  margin: 2rem 0;
   background-color: #4CAF50;
   color: white;
 }
@@ -253,12 +313,133 @@ const getPerformanceText = (actual, predicted) => {
   background-color: #45a049;
 }
 
-.back-btn {
-  background-color: #f5f5f5;
-  color: #333;
+.detailed-results {
+  margin-top: 1rem;
+  padding-top: 2rem;
+  border-top: 1px solid #e0e0e0;
 }
 
-.back-btn:hover {
-  background-color: #e0e0e0;
+.detailed-results h3 {
+  color: #333;
+  margin-bottom: 1.5rem;
+}
+
+.result-item {
+  background: white;
+  border: 1px solid #e0e0e0;
+  border-radius: 12px;
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.question-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.question-number {
+  font-weight: 600;
+  color: #666;
+}
+
+.result-status {
+  padding: 0.4rem 1rem;
+  border-radius: 20px;
+  font-weight: 600;
+}
+
+.result-status.correct {
+  background-color: #e8f5e9;
+  color: #2e7d32;
+}
+
+.result-status.wrong {
+  background-color: #ffebee;
+  color: #c62828;
+}
+
+.question-text {
+  font-size: 1.1rem;
+  color: #333;
+  margin-bottom: 1rem;
+  line-height: 1.4;
+}
+
+.answer-details {
+  background-color: #fff;
+  padding: 1.5rem;
+  border-radius: 8px;
+  border: 1px solid #e0e0e0;
+}
+
+.answer-details.incorrect {
+  border-color: #ffcdd2;
+  background-color: #fff5f5;
+}
+
+.answer-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2rem;
+  margin-bottom: 1rem;
+}
+
+.user-answer, .correct-answer {
+  padding: 1rem;
+  background: white;
+  border-radius: 6px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.user-answer strong, .correct-answer strong {
+  display: block;
+  margin-bottom: 0.5rem;
+  color: #666;
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.incorrect-text {
+  color: #d32f2f;
+}
+
+.correct-text {
+  color: #2e7d32;
+}
+
+.explanation-box {
+  margin-top: 1.5rem;
+  padding: 1.5rem;
+  background-color: #fff;
+  border-radius: 4px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.explanation-box.correct {
+  border-left: 4px solid #4CAF50;
+}
+
+.explanation-box.incorrect {
+  border-left: 4px solid #ff9800;
+}
+
+.explanation-label {
+  font-weight: 600;
+  margin-bottom: 0.75rem;
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.explanation-text {
+  color: #333;
+  line-height: 1.6;
+  margin: 0;
 }
 </style> 
