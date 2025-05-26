@@ -139,10 +139,6 @@ import FileErrorDisplay from './components/FileErrorDisplay.vue';
 import QuizResults from './components/QuizResults.vue';
 import FlashcardQuiz from './components/FlashcardQuiz.vue';
 import Sidebar from './components/Sidebar.vue';
-import * as pdfjsLib from 'pdfjs-dist';
-
-// Set up PDF.js worker
-pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
 
 // File handling state
 const selectedFiles = ref([]);
@@ -251,7 +247,7 @@ const handleSubmit = async () => {
   quizStarted.value = false;
   userResponses.value = [];
   extractedContent.value = '';
-  extractionErrors.value = []; // Clear previous errors
+  extractionErrors.value = [];
 
   try {
     console.log('Processing files:', selectedFiles.value.map(f => ({ name: f.name, type: f.type })));
@@ -260,43 +256,38 @@ const handleSubmit = async () => {
       selectedFiles.value.map(file => readFileContent(file))
     );
 
-    // Filter out empty content and join
     const validContents = fileContents.filter(content => content && content.trim().length > 0);
     console.log('Number of files with valid content:', validContents.length);
     
     if (validContents.length === 0) {
-      throw new Error('No valid content could be extracted from the selected files. Please upload text (.txt) files with actual content.');
+      throw new Error('No valid content could be extracted from the selected files.');
     }
 
     extractedContent.value = validContents.join('\n\n');
     console.log('Total content length:', extractedContent.value.length);
     
     if (extractedContent.value.trim().length < 50) {
-      throw new Error('The extracted content is too short to generate meaningful questions. Please provide more content (at least 50 characters).');
+      throw new Error('The extracted content is too short to generate meaningful questions.');
     }
 
-    const requestedQuestionCount = Math.min(Number(questionCount.value) * 3, 30);
+    const requestedQuestionCount = Number(questionCount.value);
     console.log('Requesting questions:', requestedQuestionCount);
     
-    const response = await generateQuestions(extractedContent.value, requestedQuestionCount);
+    const questions = await generateQuestions(extractedContent.value, requestedQuestionCount);
     
-    if (!response) {
-      throw new Error('No response received from the question generation service.');
+    if (!questions || questions.length === 0) {
+      throw new Error('No valid questions could be generated.');
     }
 
-    const processedQuiz = processQuizResponse(response, extractedContent.value);
-    
-    if (!processedQuiz || !processedQuiz.questions || processedQuiz.questions.length === 0) {
-      throw new Error('No valid questions could be generated. Please check if the content is suitable for question generation.');
-    }
-
-    console.log('Generated questions:', processedQuiz.questions.length);
-    adaptiveQuestions.value = selectQuestions(processedQuiz.questions);
+    console.log('Generated questions:', questions.length);
+    adaptiveQuestions.value = questions;
     predictedScore.value = calculatePredictedScore();
 
   } catch (err) {
     console.error('Error in handleSubmit:', err);
     error.value = err.message || 'An unexpected error occurred while generating questions.';
+    adaptiveQuestions.value = [];
+    predictedScore.value = null;
   } finally {
     isLoading.value = false;
   }
@@ -389,170 +380,235 @@ async function readFileContent(file) {
 }
 
 async function generateQuestions(content, count) {
-  const prompt = `Create a quiz with ${count} COMPLETELY UNIQUE and DIVERSE questions based on this text. Each question MUST cover a different concept or aspect. NO REPETITIVE or SIMILAR questions allowed.
+  const maxRetries = 3;
+  let retryCount = 0;
+  let allQuestions = [];
 
-CRITICAL REQUIREMENTS:
-1. Each explanation MUST be a direct quote or paraphrased content from the original text
-2. Explanations should reference specific parts of the text that justify the correct answer
-3. Do NOT make up explanations - they must be based on the actual content provided
-4. If a concept isn't clearly explained in the text, don't create a question about it
-5. Automatically determine appropriate difficulty (easy/medium/hard) based on:
-   - Easy: Basic facts, definitions, or simple concepts
-   - Medium: Understanding relationships between concepts
-   - Hard: Analysis, evaluation, or complex relationships
+  while (retryCount < maxRetries && allQuestions.length < count) {
+    try {
+      const remainingCount = count - allQuestions.length;
+      const strategy = retryCount % 3;
+      let prompt = `Generate exactly ${remainingCount} questions. DO NOT use markdown formatting or asterisks for emphasis.
+FOLLOW THIS EXACT FORMAT WITH NO DEVIATIONS:
 
-Format requirements for each question:
+For Multiple Choice Questions:
+Question: What is the question text?
+A) First option
+B) Second option
+C) Third option
+D) Fourth option
+Answer: A* (or B*, C*, D* - add asterisk to correct answer)
+Difficulty: easy (or medium or hard)
 
-For multiple choice questions:
-1. Question: [unique question text]
-2. Options (mark correct with *):
-   A) [option]
-   B) [option]
-   C) [option]
-   D) [option]
-3. Explanation: [quote or paraphrase relevant text that explains the correct answer]
-4. Difficulty: [AI determines: easy|medium|hard]
+For True/False Questions:
+True/False: What is the question text?
+Answer: True* (or False* - add asterisk to correct answer)
+Difficulty: easy (or medium or hard)
 
-For true/false questions:
-1. True/False: [unique question text]
-2. Answer: [Write ONLY "True*" if true is correct, or "False*" if false is correct]
-3. Explanation: [quote or paraphrase relevant text that explains why the statement is true or false]
-4. Difficulty: [AI determines: easy|medium|hard]
+REQUIREMENTS:
+1. Use the exact format shown above
+2. Do not add any extra formatting or text
+3. Do not use markdown
+4. Do not use bold or italics
+5. Each question must end with a difficulty level
+6. Questions must be based on this content:
 
-IMPORTANT:
-- Each question MUST cover a different topic/concept
-- NO similar or overlapping questions
-- Make questions engaging and thought-provoking
-- Ensure clear, unambiguous wording
-- ALL explanations must come from the provided text
-- For true/false questions, ALWAYS mark the correct answer with an asterisk (*)
-- Distribute difficulties naturally based on content complexity
+${content}
 
-Text to base questions on:
-${content}`;
+STRATEGY: `;
 
-  const response = await axios.post(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${process.env.VUE_APP_GEMINI_API_KEY}`,
-    {
-      contents: [{
-        parts: [{
-          text: prompt
-        }]
-      }],
-      generationConfig: {
-        temperature: 0.7,
-        topK: 40,
-        topP: 0.95,
-        maxOutputTokens: 2048,
+      switch (strategy) {
+        case 0:
+          prompt += 'Create a mix of multiple-choice and true/false questions that directly test understanding of the content.';
+          break;
+        case 1:
+          prompt += 'Create questions that focus on what is NOT mentioned or opposite relationships in the content.';
+          break;
+        case 2:
+          prompt += 'Create questions that test application and inference of the concepts mentioned in the content.';
+          break;
       }
-    },
-    {
-      headers: {
-        'Content-Type': 'application/json'
+
+      const response = await axios.post(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${process.env.VUE_APP_GEMINI_API_KEY}`,
+        {
+          contents: [{
+            parts: [{
+              text: prompt
+            }]
+          }],
+          generationConfig: {
+            temperature: 0.7 + (retryCount * 0.1),
+            topK: 40,
+            topP: 0.95,
+            maxOutputTokens: 2048,
+          }
+        },
+        {
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+
+      if (!response.data?.candidates?.[0]?.content?.parts?.[0]?.text) {
+        throw new Error('Invalid response format from Gemini API');
+      }
+
+      const responseText = response.data.candidates[0].content.parts[0].text
+        .replace(/\*\*/g, '') // Remove markdown bold
+        .replace(/\*/g, '*')  // Normalize asterisks
+        .replace(/[""]/g, '"'); // Normalize quotes
+
+      console.log('Generated response:', responseText);
+
+      const newQuestions = processQuizResponse(responseText, content).questions;
+      
+      if (newQuestions.length === 0) {
+        console.error('No valid questions parsed from response');
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        continue;
+      }
+
+      const uniqueNewQuestions = newQuestions.filter(newQ => 
+        !allQuestions.some(existingQ => isSimilarQuestion(newQ, existingQ))
+      );
+
+      allQuestions = [...allQuestions, ...uniqueNewQuestions];
+      
+      if (allQuestions.length >= count) {
+        return allQuestions.slice(0, count);
+      }
+
+      retryCount++;
+
+    } catch (error) {
+      console.error(`Attempt ${retryCount + 1} failed:`, error);
+      retryCount++;
+      
+      if (error.response?.status === 429) {
+        await new Promise(resolve => setTimeout(resolve, 2000 * retryCount));
+      } else if (retryCount === maxRetries) {
+        throw new Error(`Failed to generate enough unique questions after ${maxRetries} attempts. ${error.response?.data?.error?.message || error.message}`);
+      } else {
+        await new Promise(resolve => setTimeout(resolve, 1000));
       }
     }
-  );
+  }
 
-  return response.data.candidates[0].content.parts[0].text;
+  if (allQuestions.length < count) {
+    throw new Error(`Could only generate ${allQuestions.length} unique questions out of ${count} requested. Please try with different content or reduce the number of questions.`);
+  }
+
+  return allQuestions;
 }
 
 function processQuizResponse(response, content) {
   const questions = [];
-  const lines = response.split('\n');
   let currentQuestion = null;
-  let collectingOptions = false;
   
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i].trim();
-    if (!line) continue;
+  // Split by double newlines to separate questions
+  const sections = response.split(/\n\s*\n/);
+  
+  for (const section of sections) {
+    const lines = section.split('\n');
     
-    if (/^\d*\.?\s*(Question:|Q:|Easy Question:|Hard Question:|Medium Question:)/i.test(line)) {
-      if (currentQuestion) {
-        findExplanationFromContent(currentQuestion, content);
-        questions.push(currentQuestion);
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (!line) continue;
+
+      // Check for question start
+      if (line.startsWith('Question:') || line.startsWith('True/False:')) {
+        if (currentQuestion) {
+          questions.push(currentQuestion);
+        }
+
+        const isMultipleChoice = line.startsWith('Question:');
+        currentQuestion = {
+          text: line.replace(/^(Question:|True\/False:)/i, '').trim(),
+          type: isMultipleChoice ? 'multiple-choice' : 'true-false',
+          options: isMultipleChoice ? {} : { 'true': 'True', 'false': 'False' },
+          correctAnswer: '',
+          explanation: '',
+          difficulty: 'medium'
+        };
+        continue;
       }
-      currentQuestion = {
-        text: line.replace(/^\d*\.?\s*(Question:|Q:|Easy Question:|Hard Question:|Medium Question:)/i, '').trim(),
-        type: 'multiple-choice',
-        options: {},
-        correctAnswer: '',
-        explanation: '',
-        difficulty: 'medium'
-      };
-      collectingOptions = true;
-    } else if (/^\d*\.?\s*(True\/False:|True or False:)/i.test(line)) {
-      if (currentQuestion) {
-        findExplanationFromContent(currentQuestion, content);
-        questions.push(currentQuestion);
-      }
-      currentQuestion = {
-        text: line.replace(/^\d*\.?\s*(True\/False:|True or False:)/i, '').trim(),
-        type: 'true-false',
-        options: { 
-          'true': 'True',
-          'false': 'False'
-        },
-        correctAnswer: '',
-        explanation: '',
-        difficulty: 'medium'
-      };
-      collectingOptions = true;
-    } else if (currentQuestion && collectingOptions) {
+
+      if (!currentQuestion) continue;
+
+      // Handle options for multiple choice
       if (currentQuestion.type === 'multiple-choice') {
-        const optionMatch = line.match(/^([A-Da-d])[).]\s*(.*)/);
+        const optionMatch = line.match(/^([A-D])[).]\s*(.*)/i);
         if (optionMatch) {
           const letter = optionMatch[1].toUpperCase();
           let option = optionMatch[2].trim();
-          
-          if (option.startsWith('*') || option.endsWith('*')) {
-            currentQuestion.correctAnswer = letter;
-            option = option.replace(/^\*|\*$/g, '').trim();
-          }
           currentQuestion.options[letter] = option;
         }
-      } else if (currentQuestion.type === 'true-false') {
-        if (line.toLowerCase().startsWith('answer:')) {
-          const answer = line.substring(7).trim().toLowerCase();
-          if (answer.includes('true*') || answer.includes('*true')) {
-            currentQuestion.correctAnswer = 'true';
-          } else if (answer.includes('false*') || answer.includes('*false')) {
-            currentQuestion.correctAnswer = 'false';
+        
+        // Check for answer line
+        if (line.startsWith('Answer:')) {
+          const answerMatch = line.match(/Answer:\s*([A-D])\*/i);
+          if (answerMatch) {
+            currentQuestion.correctAnswer = answerMatch[1].toUpperCase();
           }
         }
       }
-      
-      if (line.toLowerCase().startsWith('difficulty:')) {
-        const difficulty = line.substring(10).trim().toLowerCase();
+
+      // Handle true/false answer
+      if (currentQuestion.type === 'true-false' && line.startsWith('Answer:')) {
+        const answer = line.toLowerCase();
+        if (answer.includes('true*')) {
+          currentQuestion.correctAnswer = 'true';
+        } else if (answer.includes('false*')) {
+          currentQuestion.correctAnswer = 'false';
+        }
+      }
+
+      // Handle difficulty
+      if (line.startsWith('Difficulty:')) {
+        const difficulty = line.substring(11).trim().toLowerCase();
         if (['easy', 'medium', 'hard'].includes(difficulty)) {
           currentQuestion.difficulty = difficulty;
         }
       }
     }
   }
-  
-  // Don't forget to add the last question
+
+  // Add the last question if exists
   if (currentQuestion) {
-    findExplanationFromContent(currentQuestion, content);
     questions.push(currentQuestion);
   }
 
-  // Validate and fix questions
+  // Validate questions
   const validQuestions = questions.filter(q => {
+    // Basic validation
+    if (!q.text || !q.type) return false;
+
+    // Validate multiple choice questions
     if (q.type === 'multiple-choice') {
-      return Object.keys(q.options).length >= 2 && q.correctAnswer;
-    } else if (q.type === 'true-false') {
-      if (!q.correctAnswer) {
-        q.correctAnswer = 'false'; // Default to false if not specified
-      }
-      return true;
+      const hasEnoughOptions = Object.keys(q.options).length >= 2;
+      const hasCorrectAnswer = !!q.correctAnswer && !!q.options[q.correctAnswer];
+      return hasEnoughOptions && hasCorrectAnswer;
     }
+
+    // Validate true/false questions
+    if (q.type === 'true-false') {
+      return q.correctAnswer === 'true' || q.correctAnswer === 'false';
+    }
+
     return false;
   });
 
   if (validQuestions.length === 0) {
+    console.error('Raw response:', response);
+    console.error('Parsed questions:', questions);
     throw new Error('No valid questions could be generated from the content.');
   }
-  
+
+  // Add explanations from content
+  validQuestions.forEach(q => findExplanationFromContent(q, content));
+
   return { questions: validQuestions };
 }
 
@@ -619,9 +675,8 @@ function selectQuestions(questions) {
     )
   );
 
-  // Make sure we have enough questions
-  if (uniqueQuestions.length < Number(questionCount.value)) {
-    console.warn(`Only ${uniqueQuestions.length} unique questions available for ${questionCount.value} requested questions`);
+  // Return all unique questions if we don't have enough
+  if (uniqueQuestions.length <= Number(questionCount.value)) {
     return uniqueQuestions;
   }
 
@@ -879,6 +934,36 @@ const clearHistory = () => {
     localStorage.removeItem('quizHistory');
   }
 };
+
+// Helper function to check if two questions are too similar
+function isSimilarQuestion(q1, q2) {
+  // Convert both questions to lowercase and remove punctuation
+  const normalize = text => text.toLowerCase().replace(/[^\w\s]/g, '');
+  const q1Text = normalize(q1.text);
+  const q2Text = normalize(q2.text);
+
+  // If the questions are exactly the same, they're similar
+  if (q1Text === q2Text) return true;
+
+  // If they're different types (MC vs T/F), they're not similar
+  if (q1.type !== q2.type) return false;
+
+  // For multiple choice questions, check if the options are too similar
+  if (q1.type === 'multiple-choice' && q2.type === 'multiple-choice') {
+    const q1Options = Object.values(q1.options).map(normalize);
+    const q2Options = Object.values(q2.options).map(normalize);
+    const commonOptions = q1Options.filter(opt => q2Options.includes(opt));
+    if (commonOptions.length >= 3) return true; // If 3 or more options are the same, consider them similar
+  }
+
+  // Check for word overlap ratio
+  const q1Words = new Set(q1Text.split(/\s+/));
+  const q2Words = new Set(q2Text.split(/\s+/));
+  const commonWords = new Set([...q1Words].filter(x => q2Words.has(x)));
+  const overlapRatio = commonWords.size / Math.min(q1Words.size, q2Words.size);
+
+  return overlapRatio > 0.7; // If more than 70% of words overlap, consider them similar
+}
 </script>
 
 <style scoped>

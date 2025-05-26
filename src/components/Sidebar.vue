@@ -9,7 +9,7 @@
     
     <div class="quiz-history">
       <h3>Quiz History</h3>
-      <div class="history-list">
+      <div v-if="!selectedQuiz" class="history-list">
         <div v-if="quizHistory.length === 0" class="empty-state">
           <p>No quiz history yet</p>
           <small>Complete a quiz to see your performance here</small>
@@ -17,10 +17,10 @@
         <div v-else v-for="(quiz, index) in quizHistory" 
              :key="index" 
              class="history-item"
-             @click="$emit('retake-quiz', quiz)"
+             @click="selectQuiz(quiz)"
              role="button"
              tabindex="0"
-             @keyup.enter="$emit('retake-quiz', quiz)">
+             @keyup.enter="selectQuiz(quiz)">
           <div class="score-section">
             <div class="score-badge" :class="getScoreClass(quiz.actualScore)">
               {{ quiz.actualScore }}%
@@ -36,14 +36,21 @@
               <span class="date">{{ formatDate(quiz.date) }}</span>
             </div>
           </div>
-          <div class="retake-hint">
-            <span>Click to retake quiz</span>
+          <div class="view-hint">
+            <span>Click to view details</span>
           </div>
         </div>
       </div>
+
+      <QuizHistoryDetails
+        v-else
+        :quiz="selectedQuiz"
+        @retake-quiz="$emit('retake-quiz', $event)"
+        @close="selectedQuiz = null"
+      />
     </div>
 
-    <div v-if="quizHistory.length > 0" class="clear-history-container">
+    <div v-if="quizHistory.length > 0 && !selectedQuiz" class="clear-history-container">
       <button class="clear-history-btn" @click="$emit('clear-history')">
         <span class="trash-icon">🗑️</span>
         Clear History
@@ -53,6 +60,9 @@
 </template>
 
 <script setup>
+import { ref } from 'vue';
+import QuizHistoryDetails from './QuizHistoryDetails.vue';
+
 defineProps({
   quizHistory: {
     type: Array,
@@ -61,6 +71,12 @@ defineProps({
 });
 
 defineEmits(['create-quiz', 'retake-quiz', 'clear-history']);
+
+const selectedQuiz = ref(null);
+
+const selectQuiz = (quiz) => {
+  selectedQuiz.value = quiz;
+};
 
 const getScoreClass = (score) => {
   if (score >= 90) return 'excellent';
@@ -99,6 +115,7 @@ const formatDate = (date) => {
   position: fixed;
   left: 0;
   top: 0;
+  overflow-y: auto;
 }
 
 .sidebar-header {
@@ -169,16 +186,16 @@ const formatDate = (date) => {
   box-shadow: 0 4px 8px rgba(0,0,0,0.1);
 }
 
-.history-item:hover .retake-hint {
+.history-item:hover .view-hint {
   opacity: 1;
 }
 
-.retake-hint {
+.view-hint {
   position: absolute;
   right: 0;
   top: 0;
   bottom: 0;
-  background: rgba(76, 175, 80, 0.9);
+  background: rgba(33, 150, 243, 0.9);
   color: white;
   display: flex;
   align-items: center;
@@ -204,76 +221,42 @@ const formatDate = (date) => {
   font-size: 0.9rem;
 }
 
-.score-badge.excellent {
+.excellent {
   background-color: #e8f5e9;
-  color: #2e7d32;
-  border: 2px solid #4caf50;
+  border: 2px solid #4CAF50;
+  color: #2E7D32;
 }
 
-.score-badge.good {
+.good {
   background-color: #e3f2fd;
-  color: #1565c0;
-  border: 2px solid #2196f3;
+  border: 2px solid #2196F3;
+  color: #1565C0;
 }
 
-.score-badge.average {
+.average {
   background-color: #fff3e0;
-  color: #ef6c00;
-  border: 2px solid #ff9800;
+  border: 2px solid #FF9800;
+  color: #EF6C00;
 }
 
-.score-badge.needs-improvement {
+.needs-improvement {
   background-color: #ffebee;
-  color: #c62828;
   border: 2px solid #f44336;
+  color: #c62828;
 }
 
 .quiz-info {
   flex: 1;
+  min-width: 0;
 }
 
 .quiz-info h4 {
   margin: 0;
+  font-size: 0.9rem;
   color: #333;
-  font-size: 0.95rem;
-}
-
-.date {
-  font-size: 0.8rem;
-  color: #666;
-  display: block;
-  margin-top: 0.25rem;
-}
-
-.empty-state {
-  text-align: center;
-  padding: 2rem;
-  color: #666;
-  background: #fff;
-  border-radius: 8px;
-  border: 2px dashed #e0e0e0;
-}
-
-.empty-state p {
-  margin: 0 0 0.5rem 0;
-  font-weight: 500;
-}
-
-.empty-state small {
-  color: #888;
-}
-
-.score-section {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.25rem;
-}
-
-.predicted-score {
-  font-size: 0.7rem;
-  color: #666;
-  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .quiz-details {
@@ -284,46 +267,59 @@ const formatDate = (date) => {
   margin-top: 0.25rem;
 }
 
-.questions {
-  color: #4CAF50;
-  font-weight: 500;
+.predicted-score {
+  font-size: 0.75rem;
+  color: #666;
+  text-align: center;
+  margin-top: 0.25rem;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 2rem;
+  color: #666;
+}
+
+.empty-state p {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.empty-state small {
+  display: block;
+  margin-top: 0.5rem;
+  font-size: 0.8rem;
+  opacity: 0.7;
 }
 
 .clear-history-container {
-  position: sticky;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  padding: 1rem;
-  background: linear-gradient(transparent, #f8f9fa 50%);
-  text-align: center;
-  margin-top: auto;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid #e0e0e0;
 }
 
 .clear-history-btn {
-  background: none;
-  border: none;
-  color: #666;
+  width: 100%;
   padding: 0.75rem;
+  background-color: #f5f5f5;
+  color: #666;
+  border: none;
+  border-radius: 8px;
   font-size: 0.9rem;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  width: auto;
-  margin: 0 auto;
   transition: all 0.2s ease;
-  text-decoration: underline;
-  text-underline-offset: 3px;
 }
 
 .clear-history-btn:hover {
-  color: #ff4444;
-  transform: translateY(-1px);
+  background-color: #e0e0e0;
+  color: #333;
 }
 
 .trash-icon {
-  font-size: 1.1rem;
+  font-size: 1rem;
 }
 </style> 
