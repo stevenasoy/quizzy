@@ -1,5 +1,5 @@
 /**
- * Question Management Algorithms Module
+ * Question Management Module
  */
 
 /**
@@ -23,23 +23,38 @@ export function shuffleQuestions(array) {
  * @returns {Array} Balanced question set
  */
 export function distributeByDifficulty(questions, targetCount) {
-  const targetPerDifficulty = Math.ceil(targetCount / 3);
-  const difficultyCount = { easy: 0, medium: 0, hard: 0 };
+  // Default distribution
+  const distribution = { easy: 0.4, medium: 0.4, hard: 0.2 };
+  
+  // Calculate targets for each difficulty
+  const targets = {
+    easy: Math.round(targetCount * distribution.easy),
+    medium: Math.round(targetCount * distribution.medium),
+    hard: Math.round(targetCount * distribution.hard)
+  };
+  
   const selectedQuestions = [];
-
-  for (const difficulty of ['easy', 'medium', 'hard']) {
-    const questionsOfDifficulty = questions.filter(q => 
+  
+  // Select questions by difficulty
+  Object.entries(targets).forEach(([difficulty, count]) => {
+    const difficultyQuestions = questions.filter(q => 
       q.difficulty === difficulty && !selectedQuestions.includes(q)
     );
     
-    for (const question of questionsOfDifficulty) {
-      if (difficultyCount[difficulty] < targetPerDifficulty && 
-          selectedQuestions.length < targetCount) {
-        selectedQuestions.push(question);
-        difficultyCount[difficulty]++;
-      }
-    }
+    // Shuffle to randomize selection
+    const shuffled = shuffleQuestions(difficultyQuestions);
+    selectedQuestions.push(...shuffled.slice(0, count));
+  });
+  
+  // If we don't have enough questions of the right difficulties,
+  // fill in with whatever questions are available
+  while (selectedQuestions.length < targetCount && questions.length > selectedQuestions.length) {
+    const remainingQuestions = questions.filter(q => !selectedQuestions.includes(q));
+    const shuffled = shuffleQuestions(remainingQuestions);
+    selectedQuestions.push(shuffled[0]);
   }
-
+  
   return selectedQuestions;
-} 
+}
+
+ 

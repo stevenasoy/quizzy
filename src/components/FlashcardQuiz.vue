@@ -62,7 +62,7 @@
 
 <script setup>
 import { ref, computed } from 'vue';
-import { calculateWeightedScore } from '../algorithms';
+import { calculateWeightedScore } from '../algorithms/score-calculation';
 
 const props = defineProps({
   questions: {
@@ -82,7 +82,6 @@ const currentAnswer = ref(null);
 const showFeedback = ref(false);
 const isAnswerCorrect = ref(false);
 const userResponses = ref([]);
-const questionStartTime = ref(Date.now());
 
 const getCurrentQuestion = computed(() => {
   return props.questions[currentQuestionIndex.value];
@@ -134,27 +133,13 @@ const submitAnswer = (answer) => {
     correct: rawScore,
     difficulty: question.difficulty,
     weightedScore: weightedScore,
-    timeSpent: calculateTimeSpent(),
     explanation: question.explanation
   };
   
   userResponses.value.push(response);
 };
 
-const calculateTimeSpent = () => {
-  const endTime = Date.now();
-  const timeSpent = endTime - questionStartTime.value;
-  return timeSpent;
-};
-
 const moveToNext = () => {
-  const timeSpent = calculateTimeSpent();
-  
-  // Update the last response with time spent
-  if (userResponses.value.length > 0) {
-    userResponses.value[userResponses.value.length - 1].timeSpent = timeSpent;
-  }
-
   showFeedback.value = false;
   isAnswerCorrect.value = false;
   
@@ -163,7 +148,6 @@ const moveToNext = () => {
   } else {
     currentQuestionIndex.value++;
     currentAnswer.value = null;
-    questionStartTime.value = Date.now(); // Reset timer for next question
   }
 };
 </script>

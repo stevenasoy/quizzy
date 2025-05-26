@@ -77,6 +77,7 @@
 
 <script setup>
 import { defineProps, defineEmits } from 'vue';
+import { formatAnswer, getScoreClass, getPredictedScoreClass, getPerformanceClass, getPerformanceText } from '../algorithms/answer-formatting';
 
 defineProps({
   quiz: {
@@ -89,44 +90,6 @@ defineEmits(['retake-quiz', 'close']);
 
 const formatDate = (date) => {
   return new Date(date).toLocaleString();
-};
-
-const formatAnswer = (question, answer) => {
-  if (!answer && answer !== false) return 'Not answered';
-  
-  if (question.type === 'multiple-choice') {
-    const optionText = question.options[answer];
-    return optionText ? `${answer}) ${optionText}` : answer;
-  } else if (question.type === 'true-false') {
-    const value = String(answer).toLowerCase();
-    return value.charAt(0).toUpperCase() + value.slice(1);
-  }
-  return answer;
-};
-
-const getScoreClass = (score) => {
-  if (score >= 90) return 'excellent';
-  if (score >= 80) return 'good';
-  if (score >= 70) return 'average';
-  return 'needs-improvement';
-};
-
-const getPredictedScoreClass = (score) => {
-  if (score >= 80) return 'high';
-  if (score >= 60) return 'medium';
-  return 'low';
-};
-
-const getPerformanceClass = (actual, predicted) => {
-  if (actual > predicted + 5) return 'exceeded';
-  if (actual < predicted - 5) return 'below';
-  return 'met';
-};
-
-const getPerformanceText = (actual, predicted) => {
-  if (actual > predicted + 5) return 'Exceeded Expectations';
-  if (actual < predicted - 5) return 'Below Expectations';
-  return 'Met Expectations';
 };
 </script>
 
