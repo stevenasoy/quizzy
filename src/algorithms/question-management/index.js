@@ -42,13 +42,4 @@ export function distributeByDifficulty(questions, targetCount) {
   }
 
   return selectedQuestions;
-}
-
-/**
- * Helper function to normalize question text
- * @param {string} text - Question text to normalize
- * @returns {string} Normalized text
- */
-function normalizeQuestion(text) {
-  return text.toLowerCase().replace(/[^\w\s]/g, '').trim();
 } 

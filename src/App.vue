@@ -149,6 +149,10 @@ import QuizResults from './components/QuizResults.vue';
 import FlashcardQuiz from './components/FlashcardQuiz.vue';
 import Sidebar from './components/Sidebar.vue';
 import QuizHistoryDetails from './components/QuizHistoryDetails.vue';
+import { shuffleQuestions, distributeByDifficulty } from './algorithms';
+import { analyzeTextComplexity, normalizeText } from './algorithms';
+import { estimateContentCoverage } from './algorithms';
+import { predictPerformance } from './algorithms';
 
 // File handling state
 const selectedFiles = ref([]);
@@ -675,107 +679,55 @@ function findExplanationFromContent(question, content) {
 }
 
 function selectQuestions(questions) {
-  // First, shuffle all questions
-  const shuffledQuestions = [...questions].sort(() => Math.random() - 0.5);
-  
-  // Remove duplicates while preserving order
-  const uniqueQuestions = shuffledQuestions.filter((question, index, self) => 
+  // First, remove duplicates while preserving order
+  const uniqueQuestions = questions.filter((question, index, self) => 
     index === self.findIndex((q) => 
-      q.text.toLowerCase().replace(/[^\w\s]/g, '') === 
-      question.text.toLowerCase().replace(/[^\w\s]/g, '')
+      normalizeText(q.text) === normalizeText(question.text)
     )
   );
 
   // Return all unique questions if we don't have enough
   if (uniqueQuestions.length <= Number(questionCount.value)) {
-    return uniqueQuestions;
+    return shuffleQuestions(uniqueQuestions);
   }
 
-  // Select the requested number of questions while maintaining difficulty distribution
-  const targetPerDifficulty = Math.ceil(Number(questionCount.value) / 3);
-  const selectedQuestions = [];
-  const difficultyCount = { easy: 0, medium: 0, hard: 0 };
-
-  // First pass: try to get equal distribution
-  uniqueQuestions.forEach(question => {
-    const difficulty = question.difficulty || 'medium';
-    if (difficultyCount[difficulty] < targetPerDifficulty && 
-        selectedQuestions.length < Number(questionCount.value)) {
-      selectedQuestions.push(question);
-      difficultyCount[difficulty]++;
-    }
-  });
-
-  // Second pass: fill remaining slots if any
-  if (selectedQuestions.length < Number(questionCount.value)) {
-    uniqueQuestions.forEach(question => {
-      if (!selectedQuestions.includes(question) && 
-          selectedQuestions.length < Number(questionCount.value)) {
-        selectedQuestions.push(question);
-      }
-    });
-  }
-
-  return selectedQuestions;
+  // Use the algorithm to distribute questions by difficulty
+  return distributeByDifficulty(uniqueQuestions, Number(questionCount.value));
 }
 
 function calculatePredictedScore() {
-  const contentCoverage = analyzeContentForCoverage();
-  const contentComplexity = analyzeContentComplexity();
-  const questionDiversity = analyzeQuestionDiversity();
-  
-  // Weight factors
-  const coverageWeight = 0.4;
-  const complexityWeight = 0.3;
-  const diversityWeight = 0.3;
-  
-  // Calculate weighted score
-  const predictedScore = (
-    contentCoverage * coverageWeight +
-    contentComplexity * complexityWeight +
-    questionDiversity * diversityWeight
-  );
-  
-  return Math.max(0, Math.min(100, Math.round(predictedScore)));
-}
+  if (!adaptiveQuestions.value.length) return 70; // Default prediction
 
-function analyzeContentForCoverage() {
-  // Analyze how well the content matches with generated questions
-  const totalContent = extractedContent.value.length;
-  if (totalContent === 0) return 0;
+  // Analyze content complexity (0-100)
+  const contentComplexity = analyzeTextComplexity(extractedContent.value);
   
-  // Calculate coverage based on content length and number of questions
-  const averageContentPerQuestion = 500; // baseline characters per question
-  const expectedQuestions = Math.ceil(totalContent / averageContentPerQuestion);
-  const actualQuestions = Number(questionCount.value);
+  // Calculate question difficulty distribution (0-100)
+  const difficultyCount = adaptiveQuestions.value.reduce((acc, q) => {
+    acc[q.difficulty] = (acc[q.difficulty] || 0) + 1;
+    return acc;
+  }, {});
   
-  const coverage = Math.min(actualQuestions / expectedQuestions, 1) * 100;
-  return coverage;
-}
+  const questionDifficulty = (
+    (difficultyCount.hard || 0) * 100 + 
+    (difficultyCount.medium || 0) * 65 + 
+    (difficultyCount.easy || 0) * 35
+  ) / adaptiveQuestions.value.length;
 
-function analyzeContentComplexity() {
-  const content = extractedContent.value.toLowerCase();
+  // Estimate content coverage (0-100)
+  const coverage = estimateContentCoverage(extractedContent.value, adaptiveQuestions.value);
   
-  // Define complexity indicators
-  const complexityIndicators = [
-    'analyze', 'compare', 'contrast', 'evaluate', 'explain',
-    'describe', 'discuss', 'examine', 'interpret', 'justify',
-    'therefore', 'however', 'although', 'furthermore', 'consequently'
-  ];
-  
-  // Count complexity indicators
-  let complexityScore = 0;
-  complexityIndicators.forEach(indicator => {
-    const regex = new RegExp(indicator, 'g');
-    const matches = content.match(regex);
-    if (matches) {
-      complexityScore += matches.length;
-    }
+  // Calculate topic diversity (0-100)
+  const diversity = analyzeQuestionDiversity();
+
+  // Use predictPerformance algorithm to get final prediction
+  const prediction = predictPerformance({
+    contentComplexity: contentComplexity,
+    questionDifficulty: questionDifficulty,
+    contentCoverage: coverage.coveragePercentage,
+    topicDiversity: diversity
   });
-  
-  // Normalize score to 0-100 range
-  const normalizedScore = Math.min(complexityScore * 5, 100);
-  return normalizedScore;
+
+  return Math.round(prediction.predictedScore);
 }
 
 function analyzeQuestionDiversity() {

@@ -65,6 +65,7 @@
 
 <script setup>
 import { computed } from 'vue';
+import { rankContentRelevance, findExactPhraseMatches, scoreTermFrequency } from '../algorithms';
 
 const props = defineProps({
   questions: {
@@ -109,8 +110,8 @@ function formatAnswer(question, answer) {
 }
 
 function rephraseContent(text, isSupporting, question) {
-  // Clean the text of personal info and formatting
-  let cleaned = text.trim()
+  // Clean and normalize the text
+  const cleaned = text.trim()
     .replace(/([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9._-]+)/gi, '')
     .replace(/\+\d{2}\s*\d{3}\s*\d{3}\s*\d{4}/g, '')
     .replace(/\d{4}\s*\+\d{2}\s*\d{3}\s*\d{3}/g, '')
@@ -119,97 +120,73 @@ function rephraseContent(text, isSupporting, question) {
     .replace(/\[[^\]]*\]/g, '')
     .trim();
 
-  // Extract source material context if available
-  const sourceMaterial = question.sourceMaterial || cleaned;
-  const sourceContext = question.sourceContext || '';
+  // Extract keywords from question and answers
+  const keywords = extractKeywords(question);
   
-  // Analyze the question content and source material
-  const questionLower = question.text.toLowerCase();
-  const correctAnswer = question.type === 'multiple-choice' 
-    ? question.options[question.correctAnswer].toLowerCase()
-    : String(question.correctAnswer).toLowerCase();
-
-  // Get specific keywords from the question and answers
-  const questionKeywords = questionLower
-    .replace(/[.,?!]/g, '')
-    .split(/\s+/)
-    .filter(word => word.length > 3)
-    .filter(word => !['what', 'which', 'when', 'where', 'why', 'how', 'does', 'did', 'will', 'should', 'could', 'would', 'this', 'that', 'these', 'those', 'have', 'has', 'had'].includes(word));
-
-  const correctAnswerKeywords = correctAnswer
-    .replace(/[.,?!]/g, '')
-    .split(/\s+/)
-    .filter(word => word.length > 3);
-
-  const userAnswerKeywords = question.type === 'multiple-choice' && question.userAnswer !== undefined
-    ? question.options[question.userAnswer].toLowerCase()
-        .replace(/[.,?!]/g, '')
-        .split(/\s+/)
-        .filter(word => word.length > 3)
-    : [];
-
-  // Combine all relevant keywords
-  const allKeywords = [...new Set([...questionKeywords, ...correctAnswerKeywords, ...userAnswerKeywords])];
-
-  // Find the most relevant sentence from the source material
-  function findRelevantContext(text, keywords) {
-    if (!text) return '';
-    
-    // Split into sentences and clean them
-    const sentences = text.split(/[.!?]+/)
-      .map(s => s.trim())
-      .filter(s => s.length > 0);
-
-    // Score each sentence based on keyword matches
-    const scoredSentences = sentences.map(sentence => {
-      const sentenceLower = sentence.toLowerCase();
-      const matchCount = keywords.reduce((count, keyword) => {
-        return count + (sentenceLower.includes(keyword.toLowerCase()) ? 1 : 0);
-      }, 0);
-      return { sentence, score: matchCount };
-    });
-
-    // Sort by score and get the most relevant sentences (max 2)
-    const relevantSentences = scoredSentences
-      .filter(item => item.score > 0)
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 2)
-      .map(item => item.sentence);
-
-    return relevantSentences.join('. ');
-  }
-
-  // Generate explanation based on the specific question and answer
-  function generateSpecificExplanation() {
-    const relevantContext = findRelevantContext(sourceContext || sourceMaterial, allKeywords);
-    
-    if (isSupporting) {
-      if (relevantContext) {
-        return `Correct! ${relevantContext}`;
-      }
-      return 'Correct! This aligns with the course material.';
+  // Use content processing algorithms to find relevant content
+  const relevanceScore = rankContentRelevance(cleaned, {
+    phrase: question.text,
+    keywords: keywords
+  });
+  
+  // Find exact phrase matches for better context
+  const phraseMatches = findExactPhraseMatches(cleaned, question.text);
+  
+  // Score term frequency for keyword analysis
+  const termScores = scoreTermFrequency(cleaned, keywords);
+  
+  // Generate explanation based on algorithmic analysis
+  let explanation = '';
+  
+  if (isSupporting) {
+    if (phraseMatches.length > 0) {
+      explanation = `Correct! ${phraseMatches[0].context}`;
+    } else if (relevanceScore > 70) {
+      explanation = `Correct! This aligns well with the course material.`;
     } else {
-      const correctPart = question.type === 'multiple-choice'
-        ? `The correct answer is "${question.options[question.correctAnswer]}". `
-        : `The correct answer is ${question.correctAnswer}. `;
-        
-      if (relevantContext) {
-        return `${correctPart}Here's why: ${relevantContext}`;
-      }
-      return `${correctPart}Please review this topic in the course material.`;
+      explanation = `Correct! The answer demonstrates understanding of the concept.`;
+    }
+  } else {
+    const correctPart = question.type === 'multiple-choice'
+      ? `The correct answer is "${question.options[question.correctAnswer]}". `
+      : `The correct answer is ${question.correctAnswer}. `;
+      
+    if (phraseMatches.length > 0) {
+      explanation = `${correctPart}Here's why: ${phraseMatches[0].context}`;
+    } else if (relevanceScore > 50) {
+      explanation = `${correctPart}The course material supports this because: ${Object.entries(termScores)
+        .filter(([, score]) => score > 0)
+        .map(([term]) => term)
+        .slice(0, 3)
+        .join(', ')} are key concepts discussed.`;
+    } else {
+      explanation = `${correctPart}Please review this topic in the course material.`;
     }
   }
-
-  // Generate the explanation
-  let explanation = generateSpecificExplanation();
-
-  // Add specific feedback for incorrect multiple choice answers
-  if (question.type === 'multiple-choice' && !isSupporting && question.userAnswer !== undefined) {
-    const userChoice = question.options[question.userAnswer];
-    explanation += ` You selected "${userChoice}", which is incorrect.`;
-  }
-
+  
   return explanation;
+}
+
+function extractKeywords(question) {
+  const keywords = new Set();
+  
+  // Extract from question text
+  question.text.toLowerCase()
+    .split(/\s+/)
+    .filter(word => word.length > 4)
+    .forEach(word => keywords.add(word));
+    
+  // Extract from options if multiple choice
+  if (question.type === 'multiple-choice') {
+    Object.values(question.options).forEach(option => {
+      option.toLowerCase()
+        .split(/\s+/)
+        .filter(word => word.length > 4)
+        .forEach(word => keywords.add(word));
+    });
+  }
+  
+  return Array.from(keywords);
 }
 
 function generateExplanation(question, isCorrect) {

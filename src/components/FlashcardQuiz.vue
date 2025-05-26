@@ -62,6 +62,7 @@
 
 <script setup>
 import { ref, computed } from 'vue';
+import { calculateWeightedScore } from '../algorithms';
 
 const props = defineProps({
   questions: {
@@ -81,6 +82,7 @@ const currentAnswer = ref(null);
 const showFeedback = ref(false);
 const isAnswerCorrect = ref(false);
 const userResponses = ref([]);
+const questionStartTime = ref(Date.now());
 
 const getCurrentQuestion = computed(() => {
   return props.questions[currentQuestionIndex.value];
@@ -96,31 +98,62 @@ const submitAnswer = (answer) => {
   currentAnswer.value = answer;
   const question = getCurrentQuestion.value;
   
-  console.log('Submitting answer:', {
-    givenAnswer: answer,
-    correctAnswer: question.correctAnswer,
-    type: question.type
-  });
+  // Calculate weighted score based on question difficulty
+  const weights = {
+    easy: 0.7,
+    medium: 1.0,
+    hard: 1.3
+  };
   
+  let rawScore;
   if (question.type === 'true-false') {
-    isAnswerCorrect.value = String(answer).toLowerCase() === String(question.correctAnswer).toLowerCase();
+    // Convert both to lowercase strings for comparison
+    const userAnswer = String(answer).toLowerCase();
+    const correctAnswer = String(question.correctAnswer).toLowerCase();
+    rawScore = userAnswer === correctAnswer;
   } else {
-    isAnswerCorrect.value = String(answer) === String(question.correctAnswer);
+    // For multiple choice, compare as is
+    rawScore = String(answer) === String(question.correctAnswer);
   }
   
-  console.log('Answer validation result:', isAnswerCorrect.value);
+  // Apply difficulty weighting
+  const weightedScore = calculateWeightedScore(
+    { score: rawScore ? 100 : 0 },
+    { score: weights[question.difficulty || 'medium'] }
+  );
+  
+  isAnswerCorrect.value = rawScore;
   showFeedback.value = true;
+  
+  // Store detailed response data
+  const response = {
+    questionId: currentQuestionIndex.value,
+    text: question.text,
+    userAnswer: answer,
+    correctAnswer: question.correctAnswer,
+    correct: rawScore,
+    difficulty: question.difficulty,
+    weightedScore: weightedScore,
+    timeSpent: calculateTimeSpent(),
+    explanation: question.explanation
+  };
+  
+  userResponses.value.push(response);
+};
+
+const calculateTimeSpent = () => {
+  const endTime = Date.now();
+  const timeSpent = endTime - questionStartTime.value;
+  return timeSpent;
 };
 
 const moveToNext = () => {
-  const question = getCurrentQuestion.value;
-  userResponses.value.push({
-    text: question.text,
-    userAnswer: currentAnswer.value,
-    correct: isAnswerCorrect.value,
-    difficulty: question.difficulty,
-    explanation: question.explanation
-  });
+  const timeSpent = calculateTimeSpent();
+  
+  // Update the last response with time spent
+  if (userResponses.value.length > 0) {
+    userResponses.value[userResponses.value.length - 1].timeSpent = timeSpent;
+  }
 
   showFeedback.value = false;
   isAnswerCorrect.value = false;
@@ -130,6 +163,7 @@ const moveToNext = () => {
   } else {
     currentQuestionIndex.value++;
     currentAnswer.value = null;
+    questionStartTime.value = Date.now(); // Reset timer for next question
   }
 };
 </script>

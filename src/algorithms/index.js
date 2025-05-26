@@ -20,7 +20,9 @@ export {
 
 export {
   rankContentRelevance,
-  estimateContentCoverage
+  estimateContentCoverage,
+  findExactPhraseMatches,
+  scoreTermFrequency
 } from './content-processing';
 
 export {
