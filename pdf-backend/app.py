@@ -6,13 +6,11 @@ from docx import Document
 import pdfplumber
 import os
 from dotenv import load_dotenv
-import mimetypes
 
 # Load environment variables
 load_dotenv()
 
 app = Flask(__name__)
-# Configure CORS
 CORS(app)
 
 def get_file_type(filename, content_type):
@@ -105,5 +103,5 @@ def extract_file():
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host='0.0.0.0', port=port, debug=True)
+    port = int(os.environ.get("PORT", 5001))
+    app.run(host='0.0.0.0', port=port, debug=True) 

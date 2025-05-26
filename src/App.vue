@@ -23,7 +23,7 @@
             <input 
               type="file" 
               @change="handleFileSelect" 
-              accept=".pdf,.docx,.pptx,.txt,.png,.jpg,.jpeg,.tiff,.bmp"
+              accept=".pdf,.docx,.pptx,.txt"
               ref="fileInput"
               class="file-input"
             >
@@ -139,6 +139,10 @@ import FileErrorDisplay from './components/FileErrorDisplay.vue';
 import QuizResults from './components/QuizResults.vue';
 import FlashcardQuiz from './components/FlashcardQuiz.vue';
 import Sidebar from './components/Sidebar.vue';
+import * as pdfjsLib from 'pdfjs-dist';
+
+// Set up PDF.js worker
+pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
 
 // File handling state
 const selectedFiles = ref([]);
@@ -247,23 +251,52 @@ const handleSubmit = async () => {
   quizStarted.value = false;
   userResponses.value = [];
   extractedContent.value = '';
+  extractionErrors.value = []; // Clear previous errors
 
   try {
+    console.log('Processing files:', selectedFiles.value.map(f => ({ name: f.name, type: f.type })));
+    
     const fileContents = await Promise.all(
       selectedFiles.value.map(file => readFileContent(file))
     );
 
-    extractedContent.value = fileContents.join('\n\n');
+    // Filter out empty content and join
+    const validContents = fileContents.filter(content => content && content.trim().length > 0);
+    console.log('Number of files with valid content:', validContents.length);
+    
+    if (validContents.length === 0) {
+      throw new Error('No valid content could be extracted from the selected files. Please upload text (.txt) files with actual content.');
+    }
+
+    extractedContent.value = validContents.join('\n\n');
+    console.log('Total content length:', extractedContent.value.length);
+    
+    if (extractedContent.value.trim().length < 50) {
+      throw new Error('The extracted content is too short to generate meaningful questions. Please provide more content (at least 50 characters).');
+    }
+
     const requestedQuestionCount = Math.min(Number(questionCount.value) * 3, 30);
+    console.log('Requesting questions:', requestedQuestionCount);
     
     const response = await generateQuestions(extractedContent.value, requestedQuestionCount);
+    
+    if (!response) {
+      throw new Error('No response received from the question generation service.');
+    }
+
     const processedQuiz = processQuizResponse(response, extractedContent.value);
     
+    if (!processedQuiz || !processedQuiz.questions || processedQuiz.questions.length === 0) {
+      throw new Error('No valid questions could be generated. Please check if the content is suitable for question generation.');
+    }
+
+    console.log('Generated questions:', processedQuiz.questions.length);
     adaptiveQuestions.value = selectQuestions(processedQuiz.questions);
     predictedScore.value = calculatePredictedScore();
 
   } catch (err) {
-    error.value = `Error generating questions: ${err.response?.data?.error?.message || err.message}`;
+    console.error('Error in handleSubmit:', err);
+    error.value = err.message || 'An unexpected error occurred while generating questions.';
   } finally {
     isLoading.value = false;
   }
@@ -312,12 +345,10 @@ const resetToMainScreen = () => {
 // Helper functions
 async function readFileContent(file) {
   return new Promise((resolve) => {
-    if (
-      file.type === "application/pdf" ||
-      file.type === "application/vnd.openxmlformats-officedocument.presentationml.presentation" ||
-      file.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
-      file.type.startsWith('image/')
-    ) {
+    try {
+      console.log('File type:', file.type);
+      console.log('File name:', file.name);
+      
       const formData = new FormData();
       formData.append('file', file);
       
@@ -326,38 +357,33 @@ async function readFileContent(file) {
         method: 'POST',
         body: formData
       })
-        .then(res => res.json())
-        .then(data => {
-          if (data.text) {
-            resolve(data.text);
-          } else {
-            extractionErrors.value.push({
-              fileName: file.name,
-              message: data.error || 'Failed to extract text from file'
-            });
-            resolve("[Could not extract file text]");
-          }
-        })
-        .catch(() => {
+      .then(res => res.json())
+      .then(data => {
+        if (data.text) {
+          resolve(data.text);
+        } else {
           extractionErrors.value.push({
             fileName: file.name,
-            message: 'Server error while extracting text'
+            message: data.error || 'Failed to extract text from file'
           });
-          resolve("[Could not extract file text]");
-        });
-    } else if (file.type === "text/plain") {
-      const reader = new FileReader();
-      reader.onload = (e) => resolve(e.target.result);
-      reader.onerror = () => {
+          resolve('');
+        }
+      })
+      .catch(error => {
+        console.error('Error processing file:', error);
         extractionErrors.value.push({
           fileName: file.name,
-          message: 'Error reading text file'
+          message: `Error processing file: ${error.message}`
         });
-        resolve("[Could not read file]");
-      };
-      reader.readAsText(file);
-    } else {
-      resolve(`[${file.name} is not a supported file type.]`);
+        resolve('');
+      });
+    } catch (error) {
+      console.error('Error preparing file:', error);
+      extractionErrors.value.push({
+        fileName: file.name,
+        message: `Error preparing file: ${error.message}`
+      });
+      resolve('');
     }
   });
 }
