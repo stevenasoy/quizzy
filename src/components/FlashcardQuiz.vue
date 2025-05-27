@@ -63,6 +63,11 @@
 <script setup>
 import { ref, computed } from 'vue';
 import { calculateWeightedScore } from '../algorithms/score-calculation';
+import { 
+  initializeAdaptiveQuiz,
+  updateQuizState,
+  selectNextQuestion
+} from '../algorithms/difficulty-adaptation';
 
 const props = defineProps({
   questions: {
@@ -83,8 +88,29 @@ const showFeedback = ref(false);
 const isAnswerCorrect = ref(false);
 const userResponses = ref([]);
 
+// Initialize adaptive quiz state
+const quizState = ref(initializeAdaptiveQuiz(props.questions));
+const currentQuestion = ref(null);
+
+// Method to select the next question
+const selectQuestion = () => {
+  if (!quizState.value.availableQuestions.length) return null;
+  
+  const { question, remainingQuestions } = selectNextQuestion(
+    quizState.value.availableQuestions,
+    quizState.value.currentDifficulty
+  );
+  
+  currentQuestion.value = question;
+  quizState.value.availableQuestions = remainingQuestions;
+  return question;
+};
+
 const getCurrentQuestion = computed(() => {
-  return props.questions[currentQuestionIndex.value];
+  if (!currentQuestion.value && !showFeedback.value) {
+    return selectQuestion();
+  }
+  return currentQuestion.value;
 });
 
 const totalQuestions = computed(() => {
@@ -136,12 +162,15 @@ const submitAnswer = (answer) => {
     explanation: question.explanation
   };
   
+  // Update quiz state with the response
+  quizState.value = updateQuizState(quizState.value, response);
   userResponses.value.push(response);
 };
 
 const moveToNext = () => {
   showFeedback.value = false;
   isAnswerCorrect.value = false;
+  currentQuestion.value = null; // Clear current question to trigger next selection
   
   if (currentQuestionIndex.value + 1 >= totalQuestions.value) {
     emit('quiz-completed', userResponses.value);
