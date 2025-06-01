@@ -7,9 +7,22 @@
       @retake-quiz="handleRetakeQuiz"
       @clear-history="clearHistory"
       @select-quiz="handleQuizSelect"
+      @view-stats="showStats = true"
     />
     <div class="main-content">
-      <div class="upload-container">
+      <div v-if="showStats" class="stats-view">
+        <div class="stats-header-actions">
+          <button class="back-btn" @click="showStats = false">
+            ← Back to Quiz
+          </button>
+          <button class="create-quiz-btn" @click="handleCreateQuizFromStats">
+            + Create New Quiz
+          </button>
+        </div>
+        <StudyStats :quiz-history="quizHistory" />
+      </div>
+      
+      <div v-else class="upload-container">
         <h1>QUIZZy</h1>
         
         <div v-if="selectedQuiz" class="quiz-details-container">
@@ -20,7 +33,7 @@
           />
         </div>
 
-        <div v-else-if="!quizStarted && !quizFinished && predictedScore === null" class="file-upload-section">
+        <div v-else-if="!quizStarted && !quizFinished" class="file-upload-section">
           <h2>Upload Files</h2>
           <div class="upload-area" 
             @dragover.prevent 
@@ -110,6 +123,7 @@
           :questions="adaptiveQuestions"
           :total-questions="Number(questionCount)"
           @quiz-completed="handleQuizComplete"
+          @update-question="handleQuestionUpdate"
         />
 
         <QuizResults
@@ -139,6 +153,12 @@
         </div>
       </div>
     </div>
+
+    <nav class="main-nav">
+      <div v-if="dueCount > 0" class="review-button" @click="showReviewSession = true">
+        {{ dueCount }} Due for Review
+      </div>
+    </nav>
   </div>
 </template>
 
@@ -151,12 +171,17 @@ import FlashcardQuiz from './components/FlashcardQuiz.vue';
 import Sidebar from './components/Sidebar.vue';
 import QuizHistoryDetails from './components/QuizHistoryDetails.vue';
 import AccountButton from './components/AccountButton.vue';
+import StudyStats from './components/StudyStats.vue';
 import { 
   calculatePredictedScore,
   calculateScore,
   processQuizResponse,
   isSimilarQuestion
 } from './algorithms';
+import { updateSpacedRepetition } from './algorithms/spaced-repetition';
+import { useStore } from 'vuex';
+
+const store = useStore();
 
 // File handling state
 const selectedFiles = ref([]);
@@ -176,19 +201,25 @@ const userResponses = ref([]);
 const extractedContent = ref('');
 const selectedQuiz = ref(null);
 
-// Add quiz history state
-const quizHistory = ref([]);
-
 // Add isRetaking flag to track retakes
 const isRetaking = ref(false);
 const retakeIndex = ref(-1);
 
-// Load quiz history from localStorage on mount
-onMounted(() => {
-  const savedHistory = localStorage.getItem('quizHistory');
-  if (savedHistory) {
-    quizHistory.value = JSON.parse(savedHistory);
-  }
+// Stats view state
+const showStats = ref(false);
+
+// Add computed property for quiz history
+const quizHistory = computed(() => store.state.quizHistory);
+
+// Initialize store and load data
+onMounted(async () => {
+  await store.dispatch('initializeStore');
+});
+
+// Calculate number of due questions with safety check
+const dueCount = computed(() => {
+  if (!store.state.quizzes) return 0;
+  return store.getters.getDueQuestions.length;
 });
 
 // Computed properties
@@ -319,13 +350,28 @@ const startQuiz = () => {
 
 const handleQuizComplete = (responses) => {
   userResponses.value = responses;
-  // Update the adaptiveQuestions with user answers
-  adaptiveQuestions.value = adaptiveQuestions.value.map((question, index) => ({
-    ...question,
-    userAnswer: responses[index]?.userAnswer,
-    isCorrect: responses[index]?.correct
-  }));
+  
+  // Update the adaptiveQuestions with user answers and spaced repetition data
+  adaptiveQuestions.value = adaptiveQuestions.value.map((question, index) => {
+    const response = responses[index];
+    const performance = response?.correct ? 5 : 0; // 5 for correct, 0 for incorrect
+    
+    // Update spaced repetition data
+    const updatedSpacedRepetition = updateSpacedRepetition(question, performance);
+    
+    return {
+      ...question,
+      userAnswer: response?.userAnswer,
+      isCorrect: response?.correct,
+      spacedRepetition: updatedSpacedRepetition
+    };
+  });
+  
+  // Set quiz states
+  quizStarted.value = false;
   quizFinished.value = true;
+  
+  // Save results
   saveQuizResults();
 };
 
@@ -548,7 +594,7 @@ const score = computed(() => {
   return calculateScore(userResponses.value);
 });
 
-// Update the saveQuizResults function to remove timing data
+// Update the saveQuizResults function to use Vuex
 const saveQuizResults = () => {
   const quizResult = {
     fileName: selectedFiles.value[0]?.name || 'Untitled Quiz',
@@ -570,17 +616,13 @@ const saveQuizResults = () => {
   };
   
   if (isRetaking.value && retakeIndex.value !== -1) {
-    quizHistory.value[retakeIndex.value] = {
-      ...quizHistory.value[retakeIndex.value],
-      actualScore: quizResult.actualScore,
-      date: quizResult.date,
-      questions: quizResult.questions
-    };
+    store.commit('updateQuizResult', { index: retakeIndex.value, result: quizResult });
   } else {
-    quizHistory.value.unshift(quizResult);
+    store.commit('addQuizResult', quizResult);
   }
   
-  localStorage.setItem('quizHistory', JSON.stringify(quizHistory.value));
+  // Save state to localStorage
+  store.dispatch('saveState');
   
   isRetaking.value = false;
   retakeIndex.value = -1;
@@ -650,7 +692,7 @@ const handleRetakeQuiz = async (quizToRetake) => {
 
 // Update handleCreateQuiz to reset retake flags
 const handleCreateQuiz = () => {
-  // Reset the quiz state
+  showStats.value = false;
   selectedQuiz.value = null;
   quizStarted.value = false;
   quizFinished.value = false;
@@ -668,20 +710,27 @@ const handleCreateQuiz = () => {
 // Add the clearHistory function
 const clearHistory = () => {
   if (confirm('Are you sure you want to clear all quiz history? This cannot be undone.')) {
-    quizHistory.value = [];
-    localStorage.removeItem('quizHistory');
+    store.dispatch('clearQuizHistory');
   }
 };
 
 // Add function to handle quiz selection
 const handleQuizSelect = (quiz) => {
-  // Reset any active quiz states
-  quizStarted.value = false;
-  quizFinished.value = false;
-  predictedScore.value = null;
-  
-  // Set the selected quiz
-  selectedQuiz.value = quiz;
+  if (showStats.value) {
+    showStats.value = false;
+    // Add small delay to ensure smooth transition
+    setTimeout(() => {
+      selectedQuiz.value = quiz;
+    }, 100);
+  } else {
+    selectedQuiz.value = quiz;
+  }
+};
+
+// Add new method to handle create quiz from stats view
+const handleCreateQuizFromStats = () => {
+  showStats.value = false;
+  handleCreateQuiz();
 };
 </script>
 
@@ -1269,5 +1318,133 @@ h2 {
   max-width: 800px;
   margin: 0 auto;
   position: relative;
+}
+
+.review-reminder {
+  margin-bottom: 2rem;
+  text-align: center;
+}
+
+.review-btn {
+  background: #2196F3;
+  color: white;
+  padding: 1rem 2rem;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 1.1rem;
+  transition: background-color 0.2s;
+}
+
+.review-btn:hover {
+  background: #1976D2;
+}
+
+.stats-view {
+  width: 90%;
+  max-width: 1000px;
+  margin: 0 auto;
+}
+
+.back-btn {
+  margin-bottom: 1rem;
+  padding: 0.5rem 1rem;
+  background: none;
+  border: none;
+  color: #666;
+  cursor: pointer;
+  font-size: 1rem;
+  display: flex;
+  align-items: center;
+  transition: color 0.2s;
+}
+
+.back-btn:hover {
+  color: #2196F3;
+}
+
+.stats-header-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2rem;
+}
+
+.create-quiz-btn {
+  padding: 0.5rem 1.5rem;
+  background-color: #4CAF50;
+  color: white;
+  border: none;
+  border-radius: 20px;
+  font-size: 1rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  transition: all 0.2s;
+}
+
+.create-quiz-btn:hover {
+  background-color: #45a049;
+  transform: translateY(-1px);
+}
+
+.review-button {
+  background: #2196F3;
+  color: white;
+  padding: 0.5rem 1rem;
+  border-radius: 20px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: background 0.2s;
+}
+
+.review-button:hover {
+  background: #1976D2;
+}
+
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.modal-content {
+  background: white;
+  border-radius: 12px;
+  width: 100%;
+  max-width: 900px;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.main-nav {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  padding: 1rem;
+  background-color: #fff;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.review-button {
+  background: #2196F3;
+  color: white;
+  padding: 0.5rem 1rem;
+  border-radius: 20px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: background 0.2s;
+}
+
+.review-button:hover {
+  background: #1976D2;
 }
 </style> 

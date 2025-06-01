@@ -1,10 +1,15 @@
 <template>
   <div class="sidebar">
     <div class="sidebar-header">
-      <button class="create-quiz-btn" @click="$emit('create-quiz')">
-        <span class="plus-icon">+</span>
-        Create New Quiz
-      </button>
+      <h2>Quiz History</h2>
+      <div class="header-actions">
+        <button class="stats-btn" @click="$emit('view-stats')" title="View Study Statistics">
+          📊 Stats
+        </button>
+        <button class="action-btn" @click="$emit('create-quiz')" title="Create New Quiz">
+          + New Quiz
+        </button>
+      </div>
     </div>
     
     <div class="quiz-history">
@@ -53,7 +58,7 @@
 </template>
 
 <script setup>
-import { defineProps, defineEmits } from 'vue';
+import { defineProps } from 'vue';
 
 defineProps({
   quizHistory: {
@@ -62,7 +67,7 @@ defineProps({
   }
 });
 
-defineEmits(['create-quiz', 'retake-quiz', 'clear-history', 'select-quiz']);
+defineEmits(['create-quiz', 'retake-quiz', 'clear-history', 'select-quiz', 'view-stats']);
 
 const getScoreClass = (score) => {
   if (score >= 90) return 'excellent';
@@ -106,6 +111,31 @@ const formatDate = (date) => {
 .sidebar-header {
   margin-bottom: 2rem;
   flex-shrink: 0;
+}
+
+.header-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.stats-btn {
+  padding: 0.5rem 1rem;
+  background: #f8f9fa;
+  border: 1px solid #e0e0e0;
+  border-radius: 20px;
+  color: #666;
+  cursor: pointer;
+  font-size: 0.9rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  transition: all 0.2s;
+}
+
+.stats-btn:hover {
+  background: #e3f2fd;
+  color: #2196F3;
+  border-color: #2196F3;
 }
 
 .create-quiz-btn {

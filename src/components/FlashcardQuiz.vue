@@ -62,12 +62,6 @@
 
 <script setup>
 import { ref, computed } from 'vue';
-import { calculateWeightedScore } from '../algorithms/score-calculation';
-import { 
-  initializeAdaptiveQuiz,
-  updateQuizState,
-  selectNextQuestion
-} from '../algorithms/difficulty-adaptation';
 
 const props = defineProps({
   questions: {
@@ -88,34 +82,11 @@ const showFeedback = ref(false);
 const isAnswerCorrect = ref(false);
 const userResponses = ref([]);
 
-// Initialize adaptive quiz state
-const quizState = ref(initializeAdaptiveQuiz(props.questions));
-const currentQuestion = ref(null);
-
-// Method to select the next question
-const selectQuestion = () => {
-  if (!quizState.value.availableQuestions.length) return null;
-  
-  const { question, remainingQuestions } = selectNextQuestion(
-    quizState.value.availableQuestions,
-    quizState.value.currentDifficulty
-  );
-  
-  currentQuestion.value = question;
-  quizState.value.availableQuestions = remainingQuestions;
-  return question;
-};
-
 const getCurrentQuestion = computed(() => {
-  if (!currentQuestion.value && !showFeedback.value) {
-    return selectQuestion();
-  }
-  return currentQuestion.value;
+  return props.questions[currentQuestionIndex.value];
 });
 
-const totalQuestions = computed(() => {
-  return props.totalQuestions;
-});
+const totalQuestions = computed(() => props.totalQuestions);
 
 const submitAnswer = (answer) => {
   if (showFeedback.value) return;
@@ -123,60 +94,37 @@ const submitAnswer = (answer) => {
   currentAnswer.value = answer;
   const question = getCurrentQuestion.value;
   
-  // Calculate weighted score based on question difficulty
-  const weights = {
-    easy: 0.7,
-    medium: 1.0,
-    hard: 1.3
-  };
-  
   let rawScore;
   if (question.type === 'true-false') {
-    // Convert both to lowercase strings for comparison
     const userAnswer = String(answer).toLowerCase();
     const correctAnswer = String(question.correctAnswer).toLowerCase();
     rawScore = userAnswer === correctAnswer;
   } else {
-    // For multiple choice, compare as is
     rawScore = String(answer) === String(question.correctAnswer);
   }
   
-  // Apply difficulty weighting
-  const weightedScore = calculateWeightedScore(
-    { score: rawScore ? 100 : 0 },
-    { score: weights[question.difficulty || 'medium'] }
-  );
-  
   isAnswerCorrect.value = rawScore;
   showFeedback.value = true;
-  
-  // Store detailed response data
-  const response = {
-    questionId: currentQuestionIndex.value,
-    text: question.text,
+
+  // Record the response
+  userResponses.value.push({
+    questionId: getCurrentQuestion.value.id,
     userAnswer: answer,
-    correctAnswer: question.correctAnswer,
-    correct: rawScore,
-    difficulty: question.difficulty,
-    weightedScore: weightedScore,
-    explanation: question.explanation
-  };
-  
-  // Update quiz state with the response
-  quizState.value = updateQuizState(quizState.value, response);
-  userResponses.value.push(response);
+    correct: isAnswerCorrect.value,
+    timestamp: new Date().toISOString()
+  });
 };
 
 const moveToNext = () => {
-  showFeedback.value = false;
-  isAnswerCorrect.value = false;
-  currentQuestion.value = null; // Clear current question to trigger next selection
-  
   if (currentQuestionIndex.value + 1 >= totalQuestions.value) {
+    // Quiz is complete, emit the final results
     emit('quiz-completed', userResponses.value);
   } else {
+    // Move to next question
     currentQuestionIndex.value++;
     currentAnswer.value = null;
+    showFeedback.value = false;
+    isAnswerCorrect.value = false;
   }
 };
 </script>
@@ -341,16 +289,5 @@ const moveToNext = () => {
 .next-btn:hover {
   background-color: #1976D2;
   transform: translateY(-1px);
-}
-
-.explanation {
-  margin: 1rem 0;
-  padding: 1rem;
-  background-color: #f8f9fa;
-  border-left: 4px solid #2196F3;
-  border-radius: 4px;
-  color: #333;
-  font-size: 0.95rem;
-  line-height: 1.5;
 }
 </style> 
