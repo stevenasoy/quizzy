@@ -118,7 +118,7 @@ const submitAnswer = (answer) => {
 const moveToNext = () => {
   if (currentQuestionIndex.value + 1 >= totalQuestions.value) {
     // Quiz is complete, emit the final results
-    emit('quiz-completed', userResponses.value);
+    handleQuizComplete();
   } else {
     // Move to next question
     currentQuestionIndex.value++;
@@ -126,6 +126,15 @@ const moveToNext = () => {
     showFeedback.value = false;
     isAnswerCorrect.value = false;
   }
+};
+
+const handleQuizComplete = () => {
+  // Map the responses to match the expected format
+  const responses = userResponses.value.map(response => ({
+    userAnswer: response.userAnswer,
+    correct: response.correct
+  }));
+  emit('quiz-completed', responses);
 };
 </script>
 

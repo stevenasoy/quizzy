@@ -1,6 +1,6 @@
 <template>
   <div class="app-container">
-    <AccountButton />
+    <AccountButton @showAuthModal="showAuthModal = true" />
     <Sidebar 
       :quiz-history="quizHistory" 
       @create-quiz="handleCreateQuiz"
@@ -163,7 +163,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import axios from 'axios';
 import FileErrorDisplay from './components/FileErrorDisplay.vue';
 import QuizResults from './components/QuizResults.vue';
@@ -174,14 +174,15 @@ import AccountButton from './components/AccountButton.vue';
 import StudyStats from './components/StudyStats.vue';
 import { 
   calculatePredictedScore,
-  calculateScore,
   processQuizResponse,
   isSimilarQuestion
 } from './algorithms';
 import { updateSpacedRepetition } from './algorithms/spaced-repetition';
 import { useStore } from 'vuex';
+import { useAuth } from './composables/useAuth';
 
 const store = useStore();
+const { user } = useAuth();
 
 // File handling state
 const selectedFiles = ref([]);
@@ -212,8 +213,14 @@ const showStats = ref(false);
 const quizHistory = computed(() => store.state.quizHistory);
 
 // Initialize store and load data
-onMounted(async () => {
-  await store.dispatch('initializeStore');
+onMounted(() => {
+  // Initialize store
+  store.dispatch('initializeStore');
+  
+  // Load quiz history if user is logged in
+  if (user.value) {
+    loadQuizzes();
+  }
 });
 
 // Calculate number of due questions with safety check
@@ -494,27 +501,27 @@ STRATEGY: `;
           break;
       }
 
-  const response = await axios.post(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${process.env.VUE_APP_GEMINI_API_KEY}`,
-    {
-      contents: [{
-        parts: [{
-          text: prompt
-        }]
-      }],
-      generationConfig: {
+      const response = await axios.post(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${process.env.VUE_APP_GEMINI_API_KEY}`,
+        {
+          contents: [{
+            parts: [{
+              text: prompt
+            }]
+          }],
+          generationConfig: {
             temperature: 0.7 + (retryCount * 0.1),
-        topK: 40,
-        topP: 0.95,
-        maxOutputTokens: 2048,
-      }
-    },
-    {
-      headers: {
-        'Content-Type': 'application/json'
-      }
-    }
-  );
+            topK: 40,
+            topP: 0.95,
+            maxOutputTokens: 2048,
+          }
+        },
+        {
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        }
+      );
 
       if (!response.data?.candidates?.[0]?.content?.parts?.[0]?.text) {
         throw new Error('Invalid response format from Gemini API');
@@ -535,7 +542,20 @@ STRATEGY: `;
         continue;
       }
 
-      const uniqueNewQuestions = newQuestions.filter(newQ => 
+      // Add unique IDs and initialize spaced repetition data for new questions
+      const questionsWithIds = newQuestions.map(q => ({
+        ...q,
+        id: crypto.randomUUID(),
+        spacedRepetition: {
+          repetitions: 0,
+          ease: 2.5,
+          interval: 1,
+          nextReviewDate: null,
+          lastReviewDate: null
+        }
+      }));
+
+      const uniqueNewQuestions = questionsWithIds.filter(newQ => 
         !allQuestions.some(existingQ => isSimilarQuestion(newQ, existingQ))
       );
 
@@ -555,7 +575,7 @@ STRATEGY: `;
         await new Promise(resolve => setTimeout(resolve, 2000 * retryCount));
       } else if (retryCount === maxRetries) {
         throw new Error(`Failed to generate enough unique questions after ${maxRetries} attempts. ${error.response?.data?.error?.message || error.message}`);
-  } else {
+      } else {
         await new Promise(resolve => setTimeout(resolve, 1000));
       }
     }
@@ -574,10 +594,10 @@ const formatQuestionsForResults = computed(() => {
     text: q.text,
     type: q.type,
     options: q.options,
-    userAnswer: userResponses.value[index]?.userAnswer,
-    correctAnswer: q.correctAnswer,
-    explanation: q.explanation,
-    isCorrect: userResponses.value[index]?.correct
+    user_answer: userResponses.value[index]?.userAnswer,
+    correct_answer: q.correctAnswer,
+    is_correct: userResponses.value[index]?.correct,
+    explanation: q.explanation
   }));
 });
 
@@ -591,38 +611,36 @@ const correctAnswersCount = computed(() => {
 
 // Update the calculateScore function
 const score = computed(() => {
-  return calculateScore(userResponses.value);
+  if (!userResponses.value || userResponses.value.length === 0) return 0;
+  return Math.round((correctAnswersCount.value / userResponses.value.length) * 100);
 });
 
 // Update the saveQuizResults function to use Vuex
 const saveQuizResults = () => {
   const quizResult = {
-    fileName: selectedFiles.value[0]?.name || 'Untitled Quiz',
-    questionCount: Number(questionCount.value),
-    predictedScore: predictedScore.value,
-    actualScore: score.value,
-    date: new Date(),
-    fileContent: extractedContent.value,
+    topic: selectedFiles.value[0]?.name || 'Untitled Quiz',
+    score: score.value,
+    total_questions: adaptiveQuestions.value.length,
+    duration: 0, // You can add duration tracking if needed
+    created_at: new Date().toISOString(),
     questions: adaptiveQuestions.value.map((q, index) => ({
+      id: q.id,
       text: q.text,
       type: q.type,
       options: q.options,
-      userAnswer: userResponses.value[index]?.userAnswer,
-      correctAnswer: q.correctAnswer,
-      isCorrect: userResponses.value[index]?.correct,
+      user_answer: userResponses.value[index]?.userAnswer,
+      correct_answer: q.correctAnswer,
+      is_correct: userResponses.value[index]?.correct,
       explanation: q.explanation,
       difficulty: q.difficulty
     }))
   };
   
-  if (isRetaking.value && retakeIndex.value !== -1) {
-    store.commit('updateQuizResult', { index: retakeIndex.value, result: quizResult });
-  } else {
-    store.commit('addQuizResult', quizResult);
-  }
+  // Save quiz result to store
+  store.dispatch('addQuizToHistory', quizResult);
   
-  // Save state to localStorage
-  store.dispatch('saveState');
+  // Update the questions in the store with their new spaced repetition data
+  store.commit('updateQuestions', adaptiveQuestions.value);
   
   isRetaking.value = false;
   retakeIndex.value = -1;
@@ -731,6 +749,42 @@ const handleQuizSelect = (quiz) => {
 const handleCreateQuizFromStats = () => {
   showStats.value = false;
   handleCreateQuiz();
+};
+
+const showAuthModal = ref(false);
+
+// Add loadQuizzes function
+const loadQuizzes = async () => {
+  try {
+    if (user.value) {
+      // Only load quiz history for authenticated users
+      await store.dispatch('loadQuizHistory');
+    }
+  } catch (err) {
+    console.error('Error loading quizzes:', err);
+  }
+};
+
+// Add auth state change handler
+watch(user, async (newUser) => {
+  if (newUser) {
+    // User just logged in, load their quiz history
+    await loadQuizzes();
+  } else {
+    // User logged out, clear the quiz history from store
+    store.commit('clearQuizHistory');
+  }
+});
+
+const handleQuestionUpdate = (updatedQuestion) => {
+  // Update the question in adaptiveQuestions
+  const index = adaptiveQuestions.value.findIndex(q => q.id === updatedQuestion.id);
+  if (index !== -1) {
+    adaptiveQuestions.value[index] = {
+      ...adaptiveQuestions.value[index],
+      ...updatedQuestion
+    };
+  }
 };
 </script>
 

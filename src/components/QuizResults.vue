@@ -1,71 +1,65 @@
 <template>
   <div class="quiz-results">
-    <h1>Quiz Complete!</h1>
-    
-    <div class="score-display" :class="scoreStatus">
-      <div class="score-value">
-        <span class="score-number">{{ score }}</span>
-        <span class="score-separator">/</span>
-        <span class="total-questions">{{ totalQuestions }}</span>
+    <div class="score-summary">
+      <h2>Quiz Complete!</h2>
+      <div class="score-display">
+        <div class="score-circle" :class="getScoreClass">
+          <span class="score-value">{{ score }}%</span>
+          <span class="score-label">Your Score</span>
+        </div>
+        <div v-if="predictedScore !== null" class="prediction-comparison">
+          <p>Predicted Score: {{ predictedScore }}%</p>
+          <p class="performance-text">{{ getPerformanceText }}</p>
+        </div>
       </div>
-      <div class="score-percentage">({{ scorePercentage }}%)</div>
-    </div>
-
-    <div class="prediction-message" :class="scoreStatus" v-if="predictedScore !== null">
-      <p>You scored <strong>{{ scorePercentage }}%</strong>. Predicted score was <strong>{{ predictedScore }}%</strong>.</p>
-      <p class="prediction-comparison" v-if="scorePercentage > predictedScore">
-        <strong>Excellent!</strong> You surpassed the prediction!
-      </p>
     </div>
 
     <div class="questions-review">
-      <div v-for="(question, index) in questions" :key="index" class="question-item">
+      <h3>Review Your Answers</h3>
+      <div v-for="(question, index) in questions" :key="index" class="question-review">
         <div class="question-header">
-          <h3>Question {{ index + 1 }}</h3>
-          <div class="status-indicator" :class="question.isCorrect ? 'correct' : 'incorrect'">
-            {{ question.isCorrect ? '✓' : 'X' }}
-          </div>
+          <span class="question-number">Question {{ index + 1 }}</span>
+          <span class="answer-status" :class="question.is_correct ? 'correct' : 'incorrect'">
+            {{ question.is_correct ? 'Correct' : 'Incorrect' }}
+          </span>
         </div>
-        
-        <p class="question-text">{{ question.text }}</p>
-        
-        <div class="answers-container">
-          <div class="answer-box">
-            <div class="answer-label">YOUR ANSWER:</div>
-            <div class="answer-content" :class="{ 'incorrect': !question.isCorrect }">
-              <strong>{{ formatAnswer(question.userAnswer, question) }}</strong>
-            </div>
-          </div>
 
-          <div class="answer-box">
-            <div class="answer-label">CORRECT ANSWER:</div>
-            <div class="answer-content correct">
-              <strong>{{ formatAnswer(question.correctAnswer, question) }}</strong>
-            </div>
-          </div>
+        <p class="question-text">{{ question.text }}</p>
+
+        <div class="answer-details">
+          <p class="your-answer">
+            Your Answer: <span :class="question.is_correct ? 'correct-text' : 'incorrect-text'">
+              {{ question.user_answer }}
+            </span>
+          </p>
+          <p v-if="!question.is_correct" class="correct-answer">
+            Correct Answer: <span class="correct-text">{{ question.correct_answer }}</span>
+          </p>
         </div>
-        
-        <div class="explanation" v-if="question.explanation">
-          <div class="explanation-label">EXPLANATION:</div>
-          <div class="explanation-text" :class="{ 'correct-highlight': question.isCorrect, 'incorrect-highlight': !question.isCorrect }">
-            {{ question.explanation }}
-          </div>
+
+        <div v-if="question.explanation" class="explanation-text">
+          <strong>Explanation:</strong>
+          <p>{{ question.explanation }}</p>
         </div>
       </div>
+    </div>
+
+    <div class="action-buttons">
+      <button @click="$emit('restart')" class="restart-btn">
+        Try Again
+      </button>
+      <button @click="$emit('go-back')" class="back-btn">
+        Back to Upload
+      </button>
     </div>
   </div>
 </template>
 
 <script setup>
 import { computed } from 'vue';
-import { getScoreClass } from '../algorithms/answer-formatting';
 
 const props = defineProps({
   questions: {
-    type: Array,
-    required: true
-  },
-  userAnswers: {
     type: Array,
     required: true
   },
@@ -75,291 +69,204 @@ const props = defineProps({
   },
   predictedScore: {
     type: Number,
-    required: false,
     default: null
   }
 });
 
-const totalQuestions = computed(() => props.questions.length);
-const scorePercentage = computed(() => {
-  return Math.round((props.score / totalQuestions.value) * 100);
+const getScoreClass = computed(() => {
+  if (props.score >= 80) return 'high';
+  if (props.score >= 60) return 'medium';
+  return 'low';
 });
 
-const scoreStatus = computed(() => {
-  const percentage = scorePercentage.value;
-  return getScoreClass(percentage);
+const getPerformanceText = computed(() => {
+  if (props.predictedScore === null) return '';
+  
+  const difference = props.score - props.predictedScore;
+  if (difference > 10) return 'You exceeded expectations!';
+  if (difference < -10) return 'Keep practicing to improve!';
+  return 'You met the predicted score!';
 });
 
-function formatAnswer(answer, question) {
-  if (question.type === 'multiple-choice') {
-    return `${answer}) ${question.options[answer]}`;
-  }
-  return answer;
-}
+defineEmits(['restart', 'go-back']);
 </script>
 
 <style scoped>
 .quiz-results {
   max-width: 800px;
-  margin: 2rem auto;
-  background: white;
+  margin: 0 auto;
   padding: 2rem;
-  border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-  font-family: "Helvetica", "Arial", sans-serif;
 }
 
-h1 {
-  font-size: 1.5rem;
-  margin-bottom: 2rem;
-  color: #333;
-  font-weight: 600;
+.score-summary {
   text-align: center;
+  margin-bottom: 3rem;
 }
 
 .score-display {
-  border-radius: 12px;
-  padding: 2rem;
-  text-align: center;
-  margin-bottom: 2rem;
-  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.5rem;
 }
 
-.score-display.excellent {
+.score-circle {
+  width: 200px;
+  height: 200px;
+  border-radius: 50%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  margin: 2rem auto;
+  transition: all 0.3s ease;
+}
+
+.score-circle.high {
   background-color: #e8f5e9;
-  border: 3px solid #4CAF50;
+  border: 4px solid #4CAF50;
 }
 
-.score-display.good {
-  background-color: #e3f2fd;
-  border: 3px solid #2196F3;
-}
-
-.score-display.average {
+.score-circle.medium {
   background-color: #fff3e0;
-  border: 3px solid #FF9800;
+  border: 4px solid #ff9800;
 }
 
-.score-display.needs-improvement {
+.score-circle.low {
   background-color: #ffebee;
-  border: 3px solid #f44336;
+  border: 4px solid #f44336;
 }
 
 .score-value {
-  font-size: 4rem;
-  font-weight: 800;
-  color: #333;
-  display: flex;
-  justify-content: center;
-  align-items: baseline;
-  gap: 0.5rem;
+  font-size: 3.5rem;
+  font-weight: bold;
   line-height: 1;
 }
 
-.score-separator {
-  color: #666;
-  margin: 0 0.2rem;
-}
-
-.score-percentage {
-  font-size: 1.5rem;
-  font-weight: 600;
-  color: #666;
-  margin-top: 1rem;
-}
-
-.prediction-message {
-  padding: 1.5rem;
-  border-radius: 8px;
-  margin-bottom: 2rem;
-  text-align: center;
-  font-size: 1rem;
-  border: 1px solid;
-}
-
-.prediction-message.excellent {
-  background-color: #e8f5e9;
-  border-color: #4CAF50;
-  color: #2E7D32;
-}
-
-.prediction-message.good {
-  background-color: #e3f2fd;
-  border-color: #2196F3;
-  color: #1565C0;
-}
-
-.prediction-message.average {
-  background-color: #fff3e0;
-  border-color: #FF9800;
-  color: #E65100;
-}
-
-.prediction-message.needs-improvement {
-  background-color: #ffebee;
-  border-color: #f44336;
-  color: #c62828;
-}
-
-.prediction-message.exceeded {
-  background-color: #e8f5e9;
-  border-color: #4CAF50;
-  color: #2E7D32;
-}
-
-.prediction-message.met {
-  background-color: #e3f2fd;
-  border-color: #2196F3;
-  color: #1565C0;
-}
-
-.prediction-message.below {
-  background-color: #ffebee;
-  border-color: #f44336;
-  color: #c62828;
-}
-
-.prediction-message strong {
-  font-weight: 700;
+.score-label {
+  font-size: 1.2rem;
+  opacity: 0.8;
+  margin-top: 0.5rem;
 }
 
 .prediction-comparison {
-  color: #4CAF50;
-  margin-top: 0.5rem;
-  font-weight: 600;
+  color: #666;
   font-size: 1.1rem;
 }
 
-.prediction-comparison strong {
-  font-weight: 700;
+.performance-text {
+  margin-top: 0.5rem;
+  font-weight: 500;
+  color: #333;
 }
 
-.question-item {
+.questions-review {
+  margin-top: 3rem;
+}
+
+.question-review {
   background: white;
   border-radius: 8px;
+  padding: 1.5rem;
   margin-bottom: 1.5rem;
-  border: 1px solid #e0e0e0;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
 .question-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 1rem 1.5rem;
-  border-bottom: 1px solid #e0e0e0;
+  margin-bottom: 1rem;
 }
 
-.question-header h3 {
+.question-number {
+  font-weight: 500;
   color: #666;
-  font-size: 1rem;
-  font-weight: 600;
-  margin: 0;
 }
 
-.status-indicator {
-  width: 2rem;
-  height: 2rem;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 800;
-  font-size: 1rem;
+.answer-status {
+  padding: 0.4rem 1rem;
+  border-radius: 20px;
+  font-weight: 500;
+  font-size: 0.9rem;
 }
 
-.status-indicator.correct {
+.answer-status.correct {
   background-color: #e8f5e9;
   color: #2e7d32;
 }
 
-.status-indicator.incorrect {
+.answer-status.incorrect {
   background-color: #ffebee;
   color: #c62828;
 }
 
 .question-text {
-  padding: 1.5rem;
-  margin: 0;
-  color: #333;
   font-size: 1.1rem;
-  line-height: 1.5;
-}
-
-.answers-container {
-  padding: 1rem 1.5rem;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1.5rem;
-}
-
-.answer-box {
-  background: #f8f9fa;
-  padding: 1rem;
-  border-radius: 8px;
-  border: 1px solid #e0e0e0;
-}
-
-.answer-label {
-  font-size: 0.8rem;
-  color: #666;
-  margin-bottom: 0.75rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.answer-content {
+  margin-bottom: 1rem;
   color: #333;
-  font-size: 1rem;
-  line-height: 1.4;
 }
 
-.answer-content.incorrect {
-  color: #c62828;
+.answer-details {
+  background-color: #f8f9fa;
+  padding: 1rem;
+  border-radius: 4px;
+  margin-bottom: 1rem;
 }
 
-.answer-content.correct {
+.your-answer, .correct-answer {
+  margin: 0.5rem 0;
+}
+
+.correct-text {
   color: #2e7d32;
+  font-weight: 500;
 }
 
-.answer-content strong {
-  font-weight: 600;
-}
-
-.explanation {
-  padding: 1.5rem;
-  background-color: #fff;
-  margin: 1rem 1.5rem 1.5rem;
-  border-radius: 8px;
-  border: 1px solid #e0e0e0;
-}
-
-.explanation-label {
-  font-weight: 700;
-  color: #666;
-  margin-bottom: 0.75rem;
-  font-size: 0.8rem;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+.incorrect-text {
+  color: #c62828;
+  font-weight: 500;
 }
 
 .explanation-text {
-  margin: 0;
-  color: #333;
-  line-height: 1.6;
-  font-size: 1rem;
+  margin-top: 1rem;
   padding: 1rem;
+  background-color: #f8f9fa;
+  border-left: 3px solid #2196F3;
   border-radius: 4px;
 }
 
-.explanation-text.correct-highlight {
-  background-color: #e8f5e9;
-  border-left: 4px solid #4CAF50;
+.action-buttons {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  margin-top: 2rem;
 }
 
-.explanation-text.incorrect-highlight {
-  background-color: #ffebee;
-  border-left: 4px solid #f44336;
+.restart-btn, .back-btn {
+  padding: 0.8rem 1.5rem;
+  border: none;
+  border-radius: 4px;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.restart-btn {
+  background-color: #2196F3;
+  color: white;
+}
+
+.restart-btn:hover {
+  background-color: #1976D2;
+}
+
+.back-btn {
+  background-color: #f5f5f5;
+  color: #333;
+}
+
+.back-btn:hover {
+  background-color: #e0e0e0;
 }
 </style> 

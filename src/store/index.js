@@ -1,4 +1,6 @@
 import { createStore } from 'vuex';
+import { supabase } from '../lib/supabase';
+import { useAuth } from '../composables/useAuth';
 
 export default createStore({
   state: {
@@ -9,7 +11,9 @@ export default createStore({
       streak: 0,
       lastReviewDate: null,
       accuracy: []
-    }
+    },
+    isLoading: false,
+    error: null
   },
 
   mutations: {
@@ -99,6 +103,22 @@ export default createStore({
         accuracy: [],
         totalQuizzes: 0
       };
+    },
+
+    setQuizHistory(state, history) {
+      state.quizHistory = history;
+    },
+
+    clearQuizHistory(state) {
+      state.quizHistory = [];
+    },
+
+    setLoading(state, isLoading) {
+      state.isLoading = isLoading;
+    },
+
+    setError(state, error) {
+      state.error = error;
     }
   },
 
@@ -137,6 +157,88 @@ export default createStore({
       localStorage.removeItem('quizHistory');
       localStorage.removeItem('quizzes');
       localStorage.removeItem('userStats');
+    },
+
+    async loadQuizHistory({ commit }) {
+      const { user } = useAuth();
+      
+      if (!user.value) {
+        commit('clearQuizHistory');
+        return;
+      }
+
+      commit('setLoading', true);
+      commit('setError', null);
+
+      try {
+        const { data, error } = await supabase
+          .from('quiz_history')
+          .select('*')
+          .eq('user_id', user.value.id)
+          .order('created_at', { ascending: false });
+
+        if (error) throw error;
+
+        // Update both quiz history and user stats
+        commit('setQuizHistory', data || []);
+        
+        // Reset user stats
+        commit('setUserStats', {
+          totalQuizzes: data?.length || 0,
+          streak: 0, // You might want to calculate this based on dates
+          lastReviewDate: null,
+          accuracy: data?.map(quiz => quiz.score) || []
+        });
+      } catch (error) {
+        console.error('Error loading quiz history:', error);
+        commit('setError', 'Failed to load quiz history');
+        commit('clearQuizHistory');
+      } finally {
+        commit('setLoading', false);
+      }
+    },
+
+    async addQuizToHistory({ commit, state }, quizData) {
+      const { user } = useAuth();
+      
+      if (!user.value) {
+        console.log('User not logged in, skipping quiz history save');
+        return;
+      }
+
+      try {
+        // Format the quiz data according to the database schema
+        const formattedQuizData = {
+          user_id: user.value.id,
+          topic: quizData.topic,
+          score: quizData.score,
+          total_questions: quizData.total_questions,
+          duration: quizData.duration || 0,
+          created_at: quizData.created_at || new Date().toISOString(),
+          questions: JSON.stringify(quizData.questions) // Store questions as JSON
+        };
+
+        const { data, error } = await supabase
+          .from('quiz_history')
+          .insert([formattedQuizData])
+          .select();
+
+        if (error) {
+          console.error('Error saving quiz to Supabase:', error);
+          throw error;
+        }
+
+        if (data && data[0]) {
+          // Update local quiz history with the new quiz at the beginning
+          commit('setQuizHistory', [data[0], ...state.quizHistory]);
+          
+          // Update user stats
+          commit('addQuizResult', data[0]);
+        }
+      } catch (error) {
+        console.error('Error adding quiz to history:', error);
+        commit('setError', 'Failed to save quiz result');
+      }
     }
   },
 
@@ -178,7 +280,12 @@ export default createStore({
         quizzesByDate[date]++;
       });
       return quizzesByDate;
-    }
+    },
+
+    getQuizHistory: state => state.quizHistory,
+    isLoading: state => state.isLoading,
+    hasError: state => !!state.error,
+    getError: state => state.error
   }
 });
 
