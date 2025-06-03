@@ -6,8 +6,8 @@
         <button class="stats-btn" @click="$emit('view-stats')" title="View Study Statistics">
           📊 Stats
         </button>
-        <button class="action-btn" @click="$emit('create-quiz')" title="Create New Quiz">
-          + New Quiz
+        <button class="new-quiz-btn" @click="$emit('create-quiz')" title="Create New Quiz">
+          + Create New Quiz
         </button>
       </div>
     </div>
@@ -27,15 +27,15 @@
              tabindex="0"
              @keyup.enter="$emit('select-quiz', quiz)">
           <div class="score-section">
-            <div class="score-badge" :class="getScoreClass(quiz.actualScore)">
-              {{ quiz.actualScore }}%
+            <div class="score-badge" :class="getScoreClass(quiz.actualScore * 100)">
+              {{ Math.round(quiz.actualScore * 100) }}%
             </div>
-            <div class="predicted-score">
+            <div class="predicted-score" v-if="quiz.predictedScore !== null">
               Predicted: {{ quiz.predictedScore }}%
             </div>
           </div>
           <div class="quiz-info">
-            <h4>{{ quiz.fileName }}</h4>
+            <h4>{{ quiz.fileName || 'Untitled Quiz' }}</h4>
             <div class="quiz-details">
               <span class="questions">{{ quiz.questionCount }} questions</span>
               <span class="date">{{ formatDate(quiz.date) }}</span>
@@ -59,6 +59,7 @@
 
 <script setup>
 import { defineProps } from 'vue';
+import { getScoreClass, formatRelativeDate } from '../algorithms/score-classification';
 
 defineProps({
   quizHistory: {
@@ -69,29 +70,7 @@ defineProps({
 
 defineEmits(['create-quiz', 'retake-quiz', 'clear-history', 'select-quiz', 'view-stats']);
 
-const getScoreClass = (score) => {
-  if (score >= 90) return 'excellent';
-  if (score >= 80) return 'good';
-  if (score >= 70) return 'average';
-  return 'needs-improvement';
-};
-
-const formatDate = (date) => {
-  const d = new Date(date);
-  const now = new Date();
-  const diff = now - d;
-  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-  
-  if (days === 0) {
-    return 'Today, ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  } else if (days === 1) {
-    return 'Yesterday';
-  } else if (days < 7) {
-    return `${days} days ago`;
-  } else {
-    return d.toLocaleDateString();
-  }
-};
+const formatDate = formatRelativeDate;
 </script>
 
 <style scoped>
@@ -116,6 +95,8 @@ const formatDate = (date) => {
 .header-actions {
   display: flex;
   gap: 0.5rem;
+  flex-direction: column;
+  margin-top: 1rem;
 }
 
 .stats-btn {
@@ -130,6 +111,8 @@ const formatDate = (date) => {
   align-items: center;
   gap: 0.5rem;
   transition: all 0.2s;
+  width: 100%;
+  justify-content: center;
 }
 
 .stats-btn:hover {
@@ -138,33 +121,28 @@ const formatDate = (date) => {
   border-color: #2196F3;
 }
 
-.create-quiz-btn {
-  width: 100%;
-  padding: 1rem;
+.new-quiz-btn {
+  padding: 0.75rem 1.5rem;
   background-color: #4CAF50;
   color: white;
   border: none;
-  border-radius: 8px;
-  font-size: 1rem;
-  font-weight: 600;
+  border-radius: 20px;
+  font-size: 0.9rem;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
   transition: all 0.2s ease;
+  width: 100%;
+  font-weight: 500;
   box-shadow: 0 2px 4px rgba(76, 175, 80, 0.2);
 }
 
-.create-quiz-btn:hover {
+.new-quiz-btn:hover {
   background-color: #45a049;
   transform: translateY(-1px);
   box-shadow: 0 4px 8px rgba(76, 175, 80, 0.3);
-}
-
-.plus-icon {
-  font-size: 1.2rem;
-  font-weight: bold;
 }
 
 .quiz-history {

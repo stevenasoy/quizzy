@@ -177,21 +177,20 @@ const handleSubmit = async () => {
   error.value = '';
   
   try {
-    // Here we would normally process the files and generate questions
-    // For now, we'll simulate the process and redirect to the quiz
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    
-    // Store quiz data in localStorage
     const quizData = {
-      fileName: selectedFiles.value[0].name,
+      id: crypto.randomUUID(),
+      topic: selectedFiles.value[0].name,
       questionCount: Number(questionCount.value),
-      date: new Date(),
+      created_at: new Date().toISOString(),
       questions: [] // This would normally contain the generated questions
     };
+
+    // Store in localStorage
+    const savedQuizzes = JSON.parse(localStorage.getItem('quizzes') || '[]');
+    savedQuizzes.unshift(quizData);
+    localStorage.setItem('quizzes', JSON.stringify(savedQuizzes));
     
-    localStorage.setItem('currentQuiz', JSON.stringify(quizData));
     router.push('/');
-    
   } catch (err) {
     error.value = err.message || 'An error occurred while generating the quiz';
   } finally {

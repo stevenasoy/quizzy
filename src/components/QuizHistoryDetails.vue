@@ -1,83 +1,77 @@
 <template>
   <div class="quiz-history-details">
     <div class="header">
-      <button class="back-btn" @click="$emit('close')">← Back</button>
-      <h2>Quiz Results</h2>
+      <button class="close-btn" @click="$emit('close')">&times;</button>
+      <h2>Quiz History</h2>
       <div class="file-info">
         <span class="file-name">{{ quiz.fileName }}</span>
         <span class="date">{{ formatDate(quiz.date) }}</span>
       </div>
     </div>
 
-    <div class="scores-container">
-      <div class="score-card actual">
-        <div class="score-circle" :class="getScoreClass(quiz.actualScore)">
-          <span class="score-value">{{ quiz.actualScore }}%</span>
-        </div>
-        <span class="score-label">Your Score</span>
+    <div class="score-display" :class="getScoreClass(quiz.actualScore * 100)">
+      <div class="score-value">
+        <span class="score-number">{{ Math.round(quiz.actualScore * 100) }}</span>
+        <span class="score-separator">/</span>
+        <span class="total-questions">100</span>
       </div>
-      
-      <div class="score-card predicted">
-        <div class="score-circle" :class="getPredictedScoreClass(quiz.predictedScore)">
-          <span class="score-value">{{ quiz.predictedScore }}%</span>
-        </div>
-        <span class="score-label">Predicted Score</span>
-      </div>
+      <div class="score-percentage">({{ Math.round(quiz.actualScore * 100) }}%)</div>
     </div>
 
-    <div class="quiz-stats">
-      <div class="stat-item">
-        <span class="stat-label">Questions</span>
-        <span class="stat-value">{{ quiz.questionCount }}</span>
-      </div>
-      <div class="stat-item">
-        <span class="stat-label">Performance</span>
-        <span class="stat-value" :class="getPerformanceClass(quiz.actualScore, quiz.predictedScore)">
-          {{ getPerformanceText(quiz.actualScore, quiz.predictedScore) }}
-        </span>
-      </div>
+    <div class="prediction-message" :class="getScoreClass(quiz.actualScore * 100)" v-if="quiz.predictedScore !== null">
+      <p>You scored <strong>{{ Math.round(quiz.actualScore * 100) }}%</strong>. 
+         Predicted score was <strong>{{ quiz.predictedScore }}%</strong>.</p>
+      <p class="prediction-comparison" v-if="quiz.actualScore * 100 > quiz.predictedScore">
+        <strong>Excellent!</strong> You surpassed the prediction!
+      </p>
     </div>
 
-    <button class="retake-btn" @click="$emit('retake-quiz', quiz)">
-      Retake Quiz
-    </button>
-
-    <div v-if="quiz.questions && quiz.questions.length > 0" class="detailed-results">
-      <h3>Detailed Results</h3>
-      <div v-for="(question, index) in quiz.questions" :key="index" class="result-item">
+    <div class="questions-review">
+      <div v-for="(question, index) in quiz.questions" :key="index" class="question-item">
         <div class="question-header">
-          <span class="question-number">Question {{ index + 1 }}</span>
-          <span :class="['result-status', question.isCorrect ? 'correct' : 'wrong']">
-            {{ question.isCorrect ? '✓' : '✗' }}
-          </span>
+          <h3>Question {{ index + 1 }}</h3>
+          <div class="status-indicator" :class="question.isCorrect ? 'correct' : 'incorrect'">
+            {{ question.isCorrect ? '✓' : 'X' }}
+          </div>
         </div>
+        
         <p class="question-text">{{ question.text }}</p>
-        <div class="answer-details" :class="{ 'incorrect': !question.isCorrect }">
-          <div class="answer-row">
-            <div class="user-answer">
-              <strong>Your answer:</strong> 
-              <span :class="{ 'incorrect-text': !question.isCorrect }">
-                {{ formatAnswer(question, question.userAnswer) }}
-              </span>
-            </div>
-            <div class="correct-answer">
-              <strong>Correct answer:</strong>
-              <span class="correct-text">{{ formatAnswer(question, question.correctAnswer) }}</span>
+        
+        <div class="answers-container">
+          <div class="answer-box">
+            <div class="answer-label">YOUR ANSWER:</div>
+            <div class="answer-content" :class="{ 'incorrect': !question.isCorrect }">
+              <strong>{{ formatAnswer(question.userAnswer, question) }}</strong>
             </div>
           </div>
-          <div v-if="question.explanation" class="explanation-box" :class="{ 'correct': question.isCorrect, 'incorrect': !question.isCorrect }">
-            <p class="explanation-label">Explanation:</p>
-            <p class="explanation-text">{{ question.explanation }}</p>
+
+          <div class="answer-box">
+            <div class="answer-label">CORRECT ANSWER:</div>
+            <div class="answer-content correct">
+              <strong>{{ formatAnswer(question.correctAnswer, question) }}</strong>
+            </div>
+          </div>
+        </div>
+        
+        <div class="explanation" v-if="question.explanation">
+          <div class="explanation-label">EXPLANATION:</div>
+          <div class="explanation-text" :class="{ 'correct-highlight': question.isCorrect, 'incorrect-highlight': !question.isCorrect }">
+            {{ question.explanation }}
           </div>
         </div>
       </div>
+    </div>
+
+    <div class="actions">
+      <button class="retake-btn" @click="$emit('retake-quiz', quiz)">Retake Quiz</button>
+      <button class="close-btn-bottom" @click="$emit('close')">Close</button>
     </div>
   </div>
 </template>
 
 <script setup>
 import { defineProps, defineEmits } from 'vue';
-import { formatAnswer, getScoreClass, getPredictedScoreClass, getPerformanceClass, getPerformanceText } from '../algorithms/answer-formatting';
+import { getScoreClass } from '../algorithms/answer-formatting';
 
 defineProps({
   quiz: {
@@ -91,32 +85,59 @@ defineEmits(['retake-quiz', 'close']);
 const formatDate = (date) => {
   return new Date(date).toLocaleString();
 };
+
+const formatAnswer = (answer, question) => {
+  if (!answer && answer !== false) return 'Not answered';
+  
+  if (question.type === 'multiple-choice' && question.options) {
+    return `${answer}) ${question.options[answer]}`;
+  } else if (question.type === 'true-false') {
+    return String(answer).charAt(0).toUpperCase() + String(answer).slice(1);
+  }
+  return answer;
+};
 </script>
 
 <style scoped>
 .quiz-history-details {
-  background: white;
-  border-radius: 12px;
-  padding: 2rem;
   max-width: 800px;
-  margin: 0 auto;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  margin: 2rem auto;
+  background: white;
+  padding: 2rem;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  font-family: "Helvetica", "Arial", sans-serif;
+  position: relative;
 }
 
 .header {
   text-align: center;
   margin-bottom: 2rem;
-  position: relative;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid #eee;
 }
 
-.header h2 {
-  margin-bottom: 0.5rem;
+.close-btn {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  color: #666;
+  cursor: pointer;
+  padding: 0.5rem;
+  line-height: 1;
+}
+
+.close-btn:hover {
   color: #333;
 }
 
 .file-info {
   color: #666;
   font-size: 0.9rem;
+  margin-top: 0.5rem;
 }
 
 .file-name {
@@ -124,176 +145,100 @@ const formatDate = (date) => {
   margin-right: 1rem;
 }
 
-.scores-container {
-  display: flex;
-  justify-content: center;
-  gap: 2rem;
-  margin-bottom: 2rem;
-}
-
-.score-card {
+.score-display {
+  border-radius: 12px;
+  padding: 2rem;
   text-align: center;
+  margin-bottom: 2rem;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
 }
 
-.score-circle {
-  width: 120px;
-  height: 120px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: 1rem;
-  transition: all 0.3s ease;
+.score-display.excellent {
+  background-color: #e8f5e9;
+  border: 3px solid #4CAF50;
+}
+
+.score-display.good {
+  background-color: #e3f2fd;
+  border: 3px solid #2196F3;
+}
+
+.score-display.average {
+  background-color: #fff3e0;
+  border: 3px solid #FF9800;
+}
+
+.score-display.needs-improvement {
+  background-color: #ffebee;
+  border: 3px solid #f44336;
 }
 
 .score-value {
-  font-size: 2rem;
-  font-weight: bold;
+  font-size: 4rem;
+  font-weight: 800;
+  color: #333;
+  display: flex;
+  justify-content: center;
+  align-items: baseline;
+  gap: 0.5rem;
+  line-height: 1;
 }
 
-.score-label {
-  font-size: 0.9rem;
+.score-separator {
   color: #666;
+  margin: 0 0.2rem;
 }
 
-/* Score classes */
-.excellent {
+.score-percentage {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: #666;
+  margin-top: 1rem;
+}
+
+.prediction-message {
+  padding: 1.5rem;
+  border-radius: 8px;
+  margin-bottom: 2rem;
+  text-align: center;
+  font-size: 1rem;
+  border: 1px solid;
+}
+
+.prediction-message.excellent {
   background-color: #e8f5e9;
-  border: 3px solid #4CAF50;
+  border-color: #4CAF50;
   color: #2E7D32;
 }
 
-.good {
+.prediction-message.good {
   background-color: #e3f2fd;
-  border: 3px solid #2196F3;
+  border-color: #2196F3;
   color: #1565C0;
 }
 
-.average {
+.prediction-message.average {
   background-color: #fff3e0;
-  border: 3px solid #FF9800;
-  color: #EF6C00;
+  border-color: #FF9800;
+  color: #E65100;
 }
 
-.needs-improvement {
+.prediction-message.needs-improvement {
   background-color: #ffebee;
-  border: 3px solid #f44336;
-  color: #c62828;
+  border-color: #f44336;
+  color: #d32f2f;
 }
 
-.high {
-  background-color: #e8f5e9;
-  border: 3px solid #4CAF50;
-  color: #2E7D32;
+.questions-review {
+  margin-top: 2rem;
 }
 
-.medium {
-  background-color: #fff3e0;
-  border: 3px solid #FF9800;
-  color: #EF6C00;
-}
-
-.low {
-  background-color: #ffebee;
-  border: 3px solid #f44336;
-  color: #c62828;
-}
-
-.quiz-stats {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 1rem;
-  margin-bottom: 2rem;
-  padding: 1rem;
-  background-color: #f8f9fa;
-  border-radius: 8px;
-}
-
-.stat-item {
-  text-align: center;
-}
-
-.stat-label {
-  display: block;
-  font-size: 0.9rem;
-  color: #666;
-  margin-bottom: 0.5rem;
-}
-
-.stat-value {
-  font-size: 1.1rem;
-  font-weight: 500;
-}
-
-.exceeded {
-  color: #4CAF50;
-}
-
-.met {
-  color: #2196F3;
-}
-
-.below {
-  color: #f44336;
-}
-
-.back-btn {
-  position: absolute;
-  left: 0;
-  top: 50%;
-  transform: translateY(-50%);
-  background: none;
-  border: none;
-  color: #666;
-  font-size: 1rem;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem;
-  transition: color 0.2s;
-}
-
-.back-btn:hover {
-  color: #333;
-}
-
-.retake-btn {
-  width: 100%;
-  padding: 1rem;
-  border: none;
-  border-radius: 8px;
-  font-size: 1rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  margin: 2rem 0;
-  background-color: #4CAF50;
-  color: white;
-}
-
-.retake-btn:hover {
-  background-color: #45a049;
-}
-
-.detailed-results {
-  margin-top: 1rem;
-  padding-top: 2rem;
-  border-top: 1px solid #e0e0e0;
-}
-
-.detailed-results h3 {
-  color: #333;
-  margin-bottom: 1.5rem;
-}
-
-.result-item {
+.question-item {
   background: white;
   border: 1px solid #e0e0e0;
-  border-radius: 12px;
+  border-radius: 8px;
   padding: 1.5rem;
   margin-bottom: 1.5rem;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
 }
 
 .question-header {
@@ -301,27 +246,28 @@ const formatDate = (date) => {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 1rem;
-  padding-bottom: 1rem;
-  border-bottom: 1px solid #e0e0e0;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid #eee;
 }
 
-.question-number {
-  font-weight: 600;
-  color: #666;
+.question-header h3 {
+  margin: 0;
+  color: #333;
+  font-size: 1.1rem;
 }
 
-.result-status {
-  padding: 0.4rem 1rem;
-  border-radius: 20px;
-  font-weight: 600;
+.status-indicator {
+  font-weight: bold;
+  padding: 0.25rem 0.75rem;
+  border-radius: 4px;
 }
 
-.result-status.correct {
+.status-indicator.correct {
   background-color: #e8f5e9;
   color: #2e7d32;
 }
 
-.result-status.wrong {
+.status-indicator.incorrect {
   background-color: #ffebee;
   color: #c62828;
 }
@@ -329,80 +275,109 @@ const formatDate = (date) => {
 .question-text {
   font-size: 1.1rem;
   color: #333;
-  margin-bottom: 1rem;
-  line-height: 1.4;
+  margin-bottom: 1.5rem;
+  line-height: 1.5;
 }
 
-.answer-details {
-  background-color: #fff;
-  padding: 1.5rem;
-  border-radius: 8px;
-  border: 1px solid #e0e0e0;
-}
-
-.answer-details.incorrect {
-  border-color: #ffcdd2;
-  background-color: #fff5f5;
-}
-
-.answer-row {
+.answers-container {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 2rem;
-  margin-bottom: 1rem;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
 }
 
-.user-answer, .correct-answer {
+.answer-box {
+  background: #f8f9fa;
   padding: 1rem;
-  background: white;
   border-radius: 6px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
 }
 
-.user-answer strong, .correct-answer strong {
-  display: block;
-  margin-bottom: 0.5rem;
-  color: #666;
-  font-size: 0.9rem;
+.answer-label {
+  font-size: 0.8rem;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  color: #666;
+  margin-bottom: 0.5rem;
+  font-weight: 600;
 }
 
-.incorrect-text {
-  color: #d32f2f;
+.answer-content {
+  color: #333;
 }
 
-.correct-text {
+.answer-content.correct {
   color: #2e7d32;
 }
 
-.explanation-box {
-  margin-top: 1.5rem;
-  padding: 1.5rem;
-  background-color: #fff;
-  border-radius: 4px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+.answer-content.incorrect {
+  color: #c62828;
 }
 
-.explanation-box.correct {
-  border-left: 4px solid #4CAF50;
-}
-
-.explanation-box.incorrect {
-  border-left: 4px solid #ff9800;
+.explanation {
+  background: #f8f9fa;
+  padding: 1rem;
+  border-radius: 6px;
+  margin-top: 1rem;
 }
 
 .explanation-label {
-  font-weight: 600;
-  margin-bottom: 0.75rem;
-  font-size: 0.9rem;
+  font-size: 0.8rem;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  color: #666;
+  margin-bottom: 0.5rem;
+  font-weight: 600;
 }
 
 .explanation-text {
   color: #333;
-  line-height: 1.6;
-  margin: 0;
+  line-height: 1.5;
+}
+
+.explanation-text.correct-highlight {
+  border-left: 3px solid #4caf50;
+  padding-left: 1rem;
+}
+
+.explanation-text.incorrect-highlight {
+  border-left: 3px solid #f44336;
+  padding-left: 1rem;
+}
+
+.actions {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  margin-top: 2rem;
+  padding-top: 2rem;
+  border-top: 1px solid #eee;
+}
+
+.retake-btn {
+  background-color: #2196F3;
+  color: white;
+  border: none;
+  padding: 0.8rem 2rem;
+  border-radius: 6px;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.retake-btn:hover {
+  background-color: #1976D2;
+}
+
+.close-btn-bottom {
+  background-color: #f5f5f5;
+  color: #666;
+  border: 1px solid #ddd;
+  padding: 0.8rem 2rem;
+  border-radius: 6px;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.close-btn-bottom:hover {
+  background-color: #e0e0e0;
+  color: #333;
 }
 </style> 

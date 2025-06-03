@@ -1,6 +1,6 @@
 <template>
   <div class="app-container">
-    <AccountButton @showAuthModal="showAuthModal = true" />
+    <AccountButton />
     <Sidebar 
       :quiz-history="quizHistory" 
       @create-quiz="handleCreateQuiz"
@@ -22,18 +22,18 @@
         <StudyStats :quiz-history="quizHistory" />
       </div>
       
+      <div v-else-if="selectedQuiz" class="quiz-details-container">
+        <QuizHistoryDetails
+          :quiz="selectedQuiz"
+          @retake-quiz="handleRetakeQuiz"
+          @close="selectedQuiz = null"
+        />
+      </div>
+
       <div v-else class="upload-container">
         <h1>QUIZZy</h1>
         
-        <div v-if="selectedQuiz" class="quiz-details-container">
-          <QuizHistoryDetails
-            :quiz="selectedQuiz"
-            @retake-quiz="handleRetakeQuiz"
-            @close="selectedQuiz = null"
-          />
-        </div>
-
-        <div v-else-if="!quizStarted && !quizFinished" class="file-upload-section">
+        <div v-if="!quizStarted && !quizFinished" class="file-upload-section">
           <h2>Upload Files</h2>
           <div class="upload-area" 
             @dragover.prevent 
@@ -153,17 +153,11 @@
         </div>
       </div>
     </div>
-
-    <nav class="main-nav">
-      <div v-if="dueCount > 0" class="review-button" @click="showReviewSession = true">
-        {{ dueCount }} Due for Review
-      </div>
-    </nav>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import axios from 'axios';
 import FileErrorDisplay from './components/FileErrorDisplay.vue';
 import QuizResults from './components/QuizResults.vue';
@@ -174,15 +168,13 @@ import AccountButton from './components/AccountButton.vue';
 import StudyStats from './components/StudyStats.vue';
 import { 
   calculatePredictedScore,
+  calculateScore,
   processQuizResponse,
   isSimilarQuestion
 } from './algorithms';
-import { updateSpacedRepetition } from './algorithms/spaced-repetition';
 import { useStore } from 'vuex';
-import { useAuth } from './composables/useAuth';
 
 const store = useStore();
-const { user } = useAuth();
 
 // File handling state
 const selectedFiles = ref([]);
@@ -209,24 +201,22 @@ const retakeIndex = ref(-1);
 // Stats view state
 const showStats = ref(false);
 
+// Add new state for question pools
+const questionPools = ref({
+  easy: [],
+  medium: [],
+  hard: []
+});
+
+const POOL_SIZE = 5;
+const LOW_THRESHOLD = 2;
+
 // Add computed property for quiz history
 const quizHistory = computed(() => store.state.quizHistory);
 
 // Initialize store and load data
-onMounted(() => {
-  // Initialize store
-  store.dispatch('initializeStore');
-  
-  // Load quiz history if user is logged in
-  if (user.value) {
-    loadQuizzes();
-  }
-});
-
-// Calculate number of due questions with safety check
-const dueCount = computed(() => {
-  if (!store.state.quizzes) return 0;
-  return store.getters.getDueQuestions.length;
+onMounted(async () => {
+  await store.dispatch('initializeStore');
 });
 
 // Computed properties
@@ -327,18 +317,14 @@ const handleSubmit = async () => {
       throw new Error('The extracted content is too short to generate meaningful questions.');
     }
 
-    const requestedQuestionCount = Number(questionCount.value);
-    console.log('Requesting questions:', requestedQuestionCount);
+    // Generate initial pools of questions
+    await generateQuestionPools();
     
-    const questions = await generateQuestions(extractedContent.value, requestedQuestionCount);
-    
-    if (!questions || questions.length === 0) {
-      throw new Error('No valid questions could be generated.');
-    }
-
-    console.log('Generated questions:', questions.length);
-    adaptiveQuestions.value = questions;
-    predictedScore.value = calculatePredictedScore(adaptiveQuestions.value);
+    predictedScore.value = calculatePredictedScore([
+      ...questionPools.value.easy,
+      ...questionPools.value.medium,
+      ...questionPools.value.hard
+    ]);
 
   } catch (err) {
     console.error('Error in handleSubmit:', err);
@@ -350,27 +336,104 @@ const handleSubmit = async () => {
   }
 };
 
+// New function to generate questions for a specific difficulty
+const generateQuestionsForDifficulty = async (difficulty, count) => {
+  const questions = await generateQuestions(
+    extractedContent.value,
+    count,
+    difficulty // We'll need to modify generateQuestions to accept this parameter
+  );
+  
+  return questions.map(q => ({
+    ...q,
+    difficulty,
+    id: crypto.randomUUID(),
+    adapted: false
+  }));
+};
+
+// New function to manage question pools
+const generateQuestionPools = async () => {
+  try {
+    // Generate 5 questions for each difficulty
+    const [easyQuestions, mediumQuestions, hardQuestions] = await Promise.all([
+      generateQuestionsForDifficulty('easy', POOL_SIZE),
+      generateQuestionsForDifficulty('medium', POOL_SIZE),
+      generateQuestionsForDifficulty('hard', POOL_SIZE)
+    ]);
+
+    questionPools.value = {
+      easy: easyQuestions,
+      medium: mediumQuestions,
+      hard: hardQuestions
+    };
+  } catch (error) {
+    console.error('Error generating question pools:', error);
+    throw error;
+  }
+};
+
+// Modified startQuiz to use medium questions initially
 const startQuiz = () => {
+  // Start with medium questions
+  adaptiveQuestions.value = questionPools.value.medium.slice(0, Number(questionCount.value));
   quizStarted.value = true;
   quizFinished.value = false;
+};
+
+// New function to check and replenish question pools
+const replenishQuestionPool = async (difficulty) => {
+  const pool = questionPools.value[difficulty];
+  if (pool.length <= LOW_THRESHOLD) {
+    const neededQuestions = POOL_SIZE - pool.length;
+    const newQuestions = await generateQuestionsForDifficulty(difficulty, neededQuestions);
+    questionPools.value[difficulty] = [...pool, ...newQuestions];
+  }
+};
+
+// Modified handleQuestionUpdate to remove adaptive logic
+const handleQuestionUpdate = async (updatedQuestion) => {
+  // Find the current question index
+  const currentIndex = adaptiveQuestions.value.findIndex(q => q.id === updatedQuestion.id);
+  if (currentIndex === -1) return;
+
+  // Update the current question with the user's response
+  adaptiveQuestions.value[currentIndex] = {
+    ...updatedQuestion,
+    adapted: true
+  };
+
+  // Remove the used question from its pool
+  const currentDifficulty = updatedQuestion.difficulty;
+  questionPools.value[currentDifficulty] = questionPools.value[currentDifficulty]
+    .filter(q => q.id !== updatedQuestion.id);
+
+  // Check if we need to replenish the pool
+  await replenishQuestionPool(currentDifficulty);
+
+  // If there's a next question, select it from the same difficulty pool
+  if (currentIndex + 1 < Number(questionCount.value)) {
+    const nextQuestion = questionPools.value[currentDifficulty][0];
+    
+    if (nextQuestion) {
+      adaptiveQuestions.value[currentIndex + 1] = {
+        ...nextQuestion,
+        adapted: false
+      };
+    }
+  }
 };
 
 const handleQuizComplete = (responses) => {
   userResponses.value = responses;
   
-  // Update the adaptiveQuestions with user answers and spaced repetition data
+  // Update the adaptiveQuestions with user answers
   adaptiveQuestions.value = adaptiveQuestions.value.map((question, index) => {
     const response = responses[index];
-    const performance = response?.correct ? 5 : 0; // 5 for correct, 0 for incorrect
-    
-    // Update spaced repetition data
-    const updatedSpacedRepetition = updateSpacedRepetition(question, performance);
-    
     return {
       ...question,
       userAnswer: response?.userAnswer,
-      isCorrect: response?.correct,
-      spacedRepetition: updatedSpacedRepetition
+      isCorrect: response?.correct
     };
   });
   
@@ -451,7 +514,7 @@ async function readFileContent(file) {
   });
 }
 
-async function generateQuestions(content, count) {
+async function generateQuestions(content, count, targetDifficulty = null) {
   const maxRetries = 3;
   let retryCount = 0;
   let allQuestions = [];
@@ -460,7 +523,7 @@ async function generateQuestions(content, count) {
     try {
       const remainingCount = count - allQuestions.length;
       const strategy = retryCount % 3;
-      let prompt = `Generate exactly ${remainingCount} questions. DO NOT use markdown formatting or asterisks for emphasis.
+      let prompt = `Generate exactly ${remainingCount} questions with ${targetDifficulty || 'mixed'} difficulty. DO NOT use markdown formatting or asterisks for emphasis.
 FOLLOW THIS EXACT FORMAT WITH NO DEVIATIONS:
 
 For Multiple Choice Questions:
@@ -470,19 +533,19 @@ B) Second option
 C) Third option
 D) Fourth option
 Answer: A* (or B*, C*, D* - add asterisk to correct answer)
-Difficulty: easy (or medium or hard)
+Difficulty: ${targetDifficulty || 'medium'} (${targetDifficulty ? `must be ${targetDifficulty}` : 'or easy or hard'})
 
 For True/False Questions:
 True/False: What is the question text?
 Answer: True* (or False* - add asterisk to correct answer)
-Difficulty: easy (or medium or hard)
+Difficulty: ${targetDifficulty || 'medium'} (${targetDifficulty ? `must be ${targetDifficulty}` : 'or easy or hard'})
 
 REQUIREMENTS:
 1. Use the exact format shown above
 2. Do not add any extra formatting or text
 3. Do not use markdown
 4. Do not use bold or italics
-5. Each question must end with a difficulty level
+5. Each question must end with a difficulty level${targetDifficulty ? ` of ${targetDifficulty}` : ''}
 6. Questions must be based on this content:
 
 ${content}
@@ -542,17 +605,15 @@ STRATEGY: `;
         continue;
       }
 
+      // Filter questions by difficulty if specified
+      const validQuestions = targetDifficulty 
+        ? newQuestions.filter(q => q.difficulty === targetDifficulty)
+        : newQuestions;
+
       // Add unique IDs and initialize spaced repetition data for new questions
-      const questionsWithIds = newQuestions.map(q => ({
+      const questionsWithIds = validQuestions.map(q => ({
         ...q,
-        id: crypto.randomUUID(),
-        spacedRepetition: {
-          repetitions: 0,
-          ease: 2.5,
-          interval: 1,
-          nextReviewDate: null,
-          lastReviewDate: null
-        }
+        id: crypto.randomUUID()
       }));
 
       const uniqueNewQuestions = questionsWithIds.filter(newQ => 
@@ -594,10 +655,10 @@ const formatQuestionsForResults = computed(() => {
     text: q.text,
     type: q.type,
     options: q.options,
-    user_answer: userResponses.value[index]?.userAnswer,
-    correct_answer: q.correctAnswer,
-    is_correct: userResponses.value[index]?.correct,
-    explanation: q.explanation
+    userAnswer: userResponses.value[index]?.userAnswer,
+    correctAnswer: q.correctAnswer,
+    explanation: q.explanation,
+    isCorrect: userResponses.value[index]?.correct
   }));
 });
 
@@ -611,36 +672,39 @@ const correctAnswersCount = computed(() => {
 
 // Update the calculateScore function
 const score = computed(() => {
-  if (!userResponses.value || userResponses.value.length === 0) return 0;
-  return Math.round((correctAnswersCount.value / userResponses.value.length) * 100);
+  return calculateScore(userResponses.value);
 });
 
 // Update the saveQuizResults function to use Vuex
 const saveQuizResults = () => {
   const quizResult = {
-    topic: selectedFiles.value[0]?.name || 'Untitled Quiz',
-    score: score.value,
-    total_questions: adaptiveQuestions.value.length,
-    duration: 0, // You can add duration tracking if needed
-    created_at: new Date().toISOString(),
+    fileName: selectedFiles.value[0]?.name || 'Untitled Quiz',
+    questionCount: Number(questionCount.value),
+    predictedScore: predictedScore.value,
+    actualScore: score.value / 100, // Convert percentage to decimal
+    date: new Date(),
+    fileContent: extractedContent.value,
     questions: adaptiveQuestions.value.map((q, index) => ({
       id: q.id,
       text: q.text,
       type: q.type,
       options: q.options,
-      user_answer: userResponses.value[index]?.userAnswer,
-      correct_answer: q.correctAnswer,
-      is_correct: userResponses.value[index]?.correct,
+      userAnswer: userResponses.value[index]?.userAnswer,
+      correctAnswer: q.correctAnswer,
+      isCorrect: userResponses.value[index]?.correct,
       explanation: q.explanation,
       difficulty: q.difficulty
     }))
   };
   
-  // Save quiz result to store
-  store.dispatch('addQuizToHistory', quizResult);
+  if (isRetaking.value && retakeIndex.value !== -1) {
+    store.commit('updateQuizResult', { index: retakeIndex.value, result: quizResult });
+  } else {
+    store.commit('addQuizResult', quizResult);
+  }
   
-  // Update the questions in the store with their new spaced repetition data
-  store.commit('updateQuestions', adaptiveQuestions.value);
+  // Save state to localStorage
+  store.dispatch('saveState');
   
   isRetaking.value = false;
   retakeIndex.value = -1;
@@ -745,46 +809,10 @@ const handleQuizSelect = (quiz) => {
   }
 };
 
-// Add new method to handle create quiz from stats view
+// Add back the stats-related methods
 const handleCreateQuizFromStats = () => {
   showStats.value = false;
   handleCreateQuiz();
-};
-
-const showAuthModal = ref(false);
-
-// Add loadQuizzes function
-const loadQuizzes = async () => {
-  try {
-    if (user.value) {
-      // Only load quiz history for authenticated users
-      await store.dispatch('loadQuizHistory');
-    }
-  } catch (err) {
-    console.error('Error loading quizzes:', err);
-  }
-};
-
-// Add auth state change handler
-watch(user, async (newUser) => {
-  if (newUser) {
-    // User just logged in, load their quiz history
-    await loadQuizzes();
-  } else {
-    // User logged out, clear the quiz history from store
-    store.commit('clearQuizHistory');
-  }
-});
-
-const handleQuestionUpdate = (updatedQuestion) => {
-  // Update the question in adaptiveQuestions
-  const index = adaptiveQuestions.value.findIndex(q => q.id === updatedQuestion.id);
-  if (index !== -1) {
-    adaptiveQuestions.value[index] = {
-      ...adaptiveQuestions.value[index],
-      ...updatedQuestion
-    };
-  }
 };
 </script>
 
@@ -1368,10 +1396,9 @@ h2 {
 }
 
 .quiz-details-container {
-  width: 100%;
+  width: 90%;
   max-width: 800px;
   margin: 0 auto;
-  position: relative;
 }
 
 .review-reminder {
@@ -1400,6 +1427,13 @@ h2 {
   margin: 0 auto;
 }
 
+.stats-header-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2rem;
+}
+
 .back-btn {
   margin-bottom: 1rem;
   padding: 0.5rem 1rem;
@@ -1415,13 +1449,6 @@ h2 {
 
 .back-btn:hover {
   color: #2196F3;
-}
-
-.stats-header-actions {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 2rem;
 }
 
 .create-quiz-btn {
@@ -1441,64 +1468,5 @@ h2 {
 .create-quiz-btn:hover {
   background-color: #45a049;
   transform: translateY(-1px);
-}
-
-.review-button {
-  background: #2196F3;
-  color: white;
-  padding: 0.5rem 1rem;
-  border-radius: 20px;
-  cursor: pointer;
-  font-size: 0.9rem;
-  transition: background 0.2s;
-}
-
-.review-button:hover {
-  background: #1976D2;
-}
-
-.modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  z-index: 1000;
-}
-
-.modal-content {
-  background: white;
-  border-radius: 12px;
-  width: 100%;
-  max-width: 900px;
-  max-height: 90vh;
-  overflow-y: auto;
-}
-
-.main-nav {
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  padding: 1rem;
-  background-color: #fff;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-}
-
-.review-button {
-  background: #2196F3;
-  color: white;
-  padding: 0.5rem 1rem;
-  border-radius: 20px;
-  cursor: pointer;
-  font-size: 0.9rem;
-  transition: background 0.2s;
-}
-
-.review-button:hover {
-  background: #1976D2;
 }
 </style> 

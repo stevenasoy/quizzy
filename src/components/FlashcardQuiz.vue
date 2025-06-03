@@ -74,7 +74,7 @@ const props = defineProps({
   }
 });
 
-const emit = defineEmits(['quiz-completed']);
+const emit = defineEmits(['quiz-completed', 'update-question']);
 
 const currentQuestionIndex = ref(0);
 const currentAnswer = ref(null);
@@ -106,19 +106,29 @@ const submitAnswer = (answer) => {
   isAnswerCorrect.value = rawScore;
   showFeedback.value = true;
 
-  // Record the response
-  userResponses.value.push({
+  // Record the response with difficulty information
+  const response = {
     questionId: getCurrentQuestion.value.id,
     userAnswer: answer,
     correct: isAnswerCorrect.value,
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    difficulty: getCurrentQuestion.value.difficulty // Include current difficulty
+  };
+  
+  userResponses.value.push(response);
+  
+  // Emit update for adaptive difficulty
+  emit('update-question', {
+    ...getCurrentQuestion.value,
+    userAnswer: answer,
+    correct: isAnswerCorrect.value
   });
 };
 
 const moveToNext = () => {
   if (currentQuestionIndex.value + 1 >= totalQuestions.value) {
     // Quiz is complete, emit the final results
-    handleQuizComplete();
+    emit('quiz-completed', userResponses.value);
   } else {
     // Move to next question
     currentQuestionIndex.value++;
@@ -126,15 +136,6 @@ const moveToNext = () => {
     showFeedback.value = false;
     isAnswerCorrect.value = false;
   }
-};
-
-const handleQuizComplete = () => {
-  // Map the responses to match the expected format
-  const responses = userResponses.value.map(response => ({
-    userAnswer: response.userAnswer,
-    correct: response.correct
-  }));
-  emit('quiz-completed', responses);
 };
 </script>
 

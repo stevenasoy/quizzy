@@ -35,6 +35,7 @@
 
 <script setup>
 import { ref } from 'vue';
+import { extractPdfText } from '../algorithms/text-extraction';
 
 const props = defineProps({
   questions: {
@@ -59,30 +60,6 @@ answers.value = Array(props.questions.length).fill('');
 
 const handleSubmit = () => {
   emit('submit-answers', answers.value);
-};
-
-const extractPdfText = async (arrayBuffer) => {
-  const typedArray = new Uint8Array(arrayBuffer);
-  const pdf = await pdfjsLib.getDocument({ data: typedArray }).promise;
-  let text = "";
-  for (let i = 1; i <= pdf.numPages; i++) {
-    const page = await pdf.getPage(i);
-    const content = await page.getTextContent();
-    // Group items by line (y position)
-    let lastY = null;
-    let line = [];
-    content.items.forEach(item => {
-      if (lastY === null || Math.abs(item.transform[5] - lastY) < 2) {
-        line.push(item.str);
-      } else {
-        text += line.join(" ") + "\n";
-        line = [item.str];
-      }
-      lastY = item.transform[5];
-    });
-    if (line.length) text += line.join(" ") + "\n";
-  }
-  return text;
 };
 </script>
 

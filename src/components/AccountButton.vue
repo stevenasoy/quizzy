@@ -2,7 +2,7 @@
   <div class="account-button">
     <button 
       class="user-icon" 
-      :title="user ? 'Account' : 'Login / Sign Up'"
+      :title="isAuthenticated ? 'Account' : 'Login / Sign Up'"
       @click="handleAccountClick"
     >
       <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -12,9 +12,9 @@
     </button>
 
     <!-- User Menu (when logged in) -->
-    <div v-if="user && showMenu" class="user-menu">
+    <div v-if="isAuthenticated && showMenu" class="user-menu">
       <div class="user-info">
-        <span class="user-name">{{ user.user_metadata.name || user.email }}</span>
+        <span class="user-name">{{ user.name }}</span>
         <span class="user-email">{{ user.email }}</span>
       </div>
       <div class="menu-items">
@@ -36,26 +36,21 @@
       @close="showAuthModal = false"
       @login="handleLogin"
       @signup="handleSignup"
-      @resendConfirmation="handleResendConfirmation"
     />
   </div>
 </template>
 
 <script setup>
 import { ref } from 'vue';
-import { useAuth } from '../composables/useAuth';
-import { useQuizHistory } from '../composables/useQuizHistory';
-import { supabase } from '../lib/supabase';
 import AuthModal from './AuthModal.vue';
+import { useAuth } from '../composables/useAuth';
 
-const { user, signIn, signUp, signOut, temporaryHistory } = useAuth();
-const { migrateTemporaryHistory } = useQuizHistory();
-
+const { user, isAuthenticated, login, signup, logout } = useAuth();
 const showMenu = ref(false);
 const showAuthModal = ref(false);
 
 const handleAccountClick = () => {
-  if (user.value) {
+  if (isAuthenticated.value) {
     showMenu.value = !showMenu.value;
   } else {
     showAuthModal.value = true;
@@ -64,68 +59,33 @@ const handleAccountClick = () => {
 
 const handleLogin = async (credentials) => {
   try {
-    console.log('Attempting login with:', { ...credentials, password: '***' });
-    const { data, error } = await signIn(credentials);
-    
-    if (error) {
-      console.error('Login error:', error);
-      throw error;
-    }
-
-    if (data) {
+    const success = await login(credentials);
+    if (success) {
       showAuthModal.value = false;
-      // Ask user if they want to migrate temporary history
-      if (temporaryHistory.value.length > 0) {
-        const shouldMigrate = confirm(
-          'Would you like to save your quiz history to your account?'
-        );
-        if (shouldMigrate) {
-          await migrateTemporaryHistory();
-        }
-      }
-      return { success: true };
     }
-  } catch (err) {
-    console.error('Login error:', err);
-    throw err;
+  } catch (error) {
+    console.error('Login failed:', error);
   }
 };
 
 const handleSignup = async (userData) => {
   try {
-    console.log('Attempting signup with:', { ...userData, password: '***' });
-    const { data, error } = await signUp(userData);
-    console.log('Signup response:', { data, error });
-    
-    if (error) {
-      console.error('Signup error:', error);
-      throw error;
-    }
-
-    if (data) {
-      // Check if email confirmation was sent
-      if (!data.user?.confirmation_sent_at) {
-        console.error('Email confirmation was not sent');
-        throw new Error('Failed to send confirmation email. Please try again or contact support.');
-      }
-
-      console.log('Email confirmation sent at:', data.user.confirmation_sent_at);
+    const success = await signup(userData);
+    if (success) {
       showAuthModal.value = false;
-      // Automatically migrate temporary history for new users
-      if (temporaryHistory.value.length > 0) {
-        await migrateTemporaryHistory();
-      }
-      return { success: true };
     }
-  } catch (err) {
-    console.error('Signup error:', err);
-    throw err;
+  } catch (error) {
+    console.error('Signup failed:', error);
   }
 };
 
 const handleLogout = async () => {
-  await signOut();
-  showMenu.value = false;
+  try {
+    await logout();
+    showMenu.value = false;
+  } catch (error) {
+    console.error('Logout failed:', error);
+  }
 };
 
 const handleProfile = () => {
@@ -138,30 +98,6 @@ const handleSettings = () => {
   // Implement settings navigation
   console.log('Navigate to settings');
   showMenu.value = false;
-};
-
-const handleResendConfirmation = async (email) => {
-  try {
-    console.log('Attempting to resend confirmation email to:', email);
-    const { error } = await supabase.auth.resend({
-      type: 'signup',
-      email: email,
-      options: {
-        emailRedirectTo: `${window.location.origin}/auth/callback`
-      }
-    });
-    
-    if (error) {
-      console.error('Error resending confirmation:', error);
-      throw error;
-    }
-
-    console.log('Confirmation email resent successfully');
-    return { success: true };
-  } catch (err) {
-    console.error('Error resending confirmation email:', err);
-    throw err;
-  }
 };
 
 // Close menu when clicking outside
